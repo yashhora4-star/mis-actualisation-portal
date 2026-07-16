@@ -1,0 +1,25 @@
+{
+    "name": "mis-actualisation-portal",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+          "dev": "next dev",
+          "build": "next build",
+          "start": "next start",
+          "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+          "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+          "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    },
+    "dependencies": {
+          "@supabase/ssr": "^0.5.2",
+          "@supabase/supabase-js": "^2.45.4",
+          "next": "15.5.20",
+          "react": "^18.3.1",
+          "react-dom": "^18.3.1",
+          "xlsx": "^0.18.5"
+    },
+    "devDependencies": {
+          "@opennextjs/cloudflare": "^1.0.0",
+          "wrangler": "^4.86.0"
+    }
+}
