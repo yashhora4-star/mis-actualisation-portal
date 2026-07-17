@@ -1,37 +1,41 @@
 'use client';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 
 const TITLES = {
-    sheet: 'Actualisation sheet',
-    upload: 'Upload monthly sheets',
-    team: 'Team access',
+      sheet: 'Actualisation sheet',
+      upload: 'Upload monthly sheets',
+      team: 'Team access',
 };
 
 export default function Topbar({ active, month, onMonthChange, months }) {
-    const router = useRouter();
+      const router = useRouter();
 
   async function signOut() {
-        const supabase = getSupabaseBrowser();
-        await supabase.auth.signOut();
-        router.push('/login');
-        router.refresh();
+          const supabase = getSupabaseBrowser();
+          await supabase.auth.signOut();
+          router.push('/login');
+          router.refresh();
   }
 
-  return (
-        <div className="topbar">
-              <h1>{TITLES[active] || 'Dashboard'}</h1>h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <select className="cat-select" value={month || ''} onChange={(e) => onMonthChange(e.target.value)}>
-                                <option value="">All months</option>option>
-                        {(months || []).map((m) => (
-                      <option key={m} value={m}>{m}</option>option>
-                    ))}
-                      </select>select>
-                      <span className="meta">{new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>span>
-                      <button className="btn" onClick={signOut}>Sign out</button>button>
-              </div>div>
-        </div>div>
-      );
+  const monthOptions = [
+          React.createElement('option', { key: 'all', value: '' }, 'All months'),
+          ...(months || []).map((m) => React.createElement('option', { key: m, value: m }, m)),
+        ];
+
+  return React.createElement('div', { className: 'topbar' },
+                                 React.createElement('h1', null, TITLES[active] || 'Dashboard'),
+                                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+                                                           React.createElement('select', {
+                                                                       className: 'cat-select',
+                                                                       value: month || '',
+                                                                       onChange: (e) => onMonthChange(e.target.value),
+                                                           }, monthOptions),
+                                                           React.createElement('span', { className: 'meta' },
+                                                                                       new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                                                     ),
+                                                           React.createElement('button', { className: 'btn', onClick: signOut }, 'Sign out')
+                                                         )
+                               );
 }
-</div>
