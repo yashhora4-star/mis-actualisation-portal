@@ -131,4 +131,3 @@ export default function ActualisationSheet({ month, role }) {
           </>
         );
 }
-</></div>
