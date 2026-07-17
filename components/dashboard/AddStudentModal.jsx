@@ -61,4 +61,3 @@ export default function AddStudentModal({ onClose, onAdded }) {
         </div>
       );
 }
-</div>
