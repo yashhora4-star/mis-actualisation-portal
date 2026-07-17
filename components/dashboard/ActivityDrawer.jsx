@@ -41,4 +41,3 @@ export default function ActivityDrawer({ target, onClose }) {
         </div>
       );
 }
-</div>
