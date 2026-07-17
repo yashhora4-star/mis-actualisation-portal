@@ -57,24 +57,24 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
         }
   }
 
-  if (loading) return <div style={{ padding: 16 }}>Loading checklist...</div>div>;
+  if (loading) return <div style={{ padding: 16 }}>Loading checklist...</div>;
     if (!packageKey) {
           return (
                   <div style={{ padding: 16, color: 'var(--muted)' }}>
                             No package matched for this student - {role === 'superadmin' ? 'set reference_package_key on the MIS record to enable the checklist.' : 'ask the superadmin to map this student to a package.'}
-                  </div>div>
+                  </div>
                 );
     }
-    if (err) return <div style={{ padding: 16 }} className="error-text">{err}</div>div>;
+    if (err) return <div style={{ padding: 16 }} className="error-text">{err}</div>;
   
     return (
           <div style={{ padding: '12px 20px' }}>
                 <table>
                         <thead>
                                   <tr>
-                                              <th></th>th><th>Service</th>th><th>Type</th>th><th className="num-cell">Reference cost</th>th><th>Notes</th>th><th>Locked</th>th>
-                                  </tr>tr>
-                        </thead>thead>
+                                              <th></th><th>Service</th><th>Type</th><th className="num-cell">Reference cost</th><th>Notes</th><th>Locked</th>
+                                  </tr>
+                        </thead>
                         <tbody>
                           {checklist.map((item) => (
                         <tr key={item.reference_service_id}>
@@ -85,25 +85,24 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                                                                           disabled={item.locked && role !== 'superadmin'}
                                                                           onChange={(e) => toggle(item, e.target.checked)}
                                                                         />
-                                      </td>td>
-                                      <td>{item.service_name}</td>td>
-                                      <td><span className={`tag ${item.cost_type === 'fixed' ? 'ac' : item.cost_type === 'variable' ? 'vas-other' : ''}`}>{item.cost_type}</span>span></td>td>
-                                      <td className="num-cell">{item.reference_cost_inr != null ? `Rs ${inr(item.reference_cost_inr)}` : '-'}</td>td>
-                                      <td style={{ fontSize: 12, color: 'var(--muted)' }}>{item.notes || ''}</td>td>
+                                      </td>
+                                      <td>{item.service_name}</td>
+                                      <td><span className={`tag ${item.cost_type === 'fixed' ? 'ac' : item.cost_type === 'variable' ? 'vas-other' : ''}`}>{item.cost_type}</span></td>
+                                      <td className="num-cell">{item.reference_cost_inr != null ? `Rs ${inr(item.reference_cost_inr)}` : '-'}</td>
+                                      <td style={{ fontSize: 12, color: 'var(--muted)' }}>{item.notes || ''}</td>
                                       <td>
                                         {item.locked ? (
                                             role === 'superadmin' ? (
-                                                                  <button className="btn" onClick={() => unlock(item)}>Unlock</button>button>
+                                                                  <button className="btn" onClick={() => unlock(item)}>Unlock</button>
                                                                 ) : (
-                                                                  <span className="tag unmarked">Locked</span>span>
+                                                                  <span className="tag unmarked">Locked</span>
                                                                 )
                                           ) : '-'}
-                                      </td>td>
-                        </tr>tr>
+                                      </td>
+                        </tr>
                       ))}
-                        </tbody>tbody>
-                </table>table>
-          </div>div>
+                        </tbody>
+                </table>
+          </div>
         );
 }
-</div>
