@@ -30,22 +30,22 @@ function UploadBlock({ title, endpoint, needsMonth, onDone }) {
 
   return (
         <div className="card">
-              <div className="card-title">{title}</div>div>
+              <div className="card-title">{title}</div>
               <div className="upload-drop">
                       <input type="file" accept=".xlsx,.xls" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-              </div>div>
+              </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 14, alignItems: 'center' }}>
                 {needsMonth && (
                     <select className="cat-select" value={month} onChange={(e) => setMonth(e.target.value)}>
-                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>option>)}
-                    </select>select>
+                      {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
                       )}
                       <button className="btn primary" onClick={submit} disabled={busy}>
                         {busy ? 'Uploading...' : 'Upload'}
-                      </button>button>
-              </div>div>
-          {status && <div style={{ marginTop: 10, fontSize: 13 }}>{status}</div>div>}
-        </div>div>
+                      </button>
+              </div>
+          {status && <div style={{ marginTop: 10, fontSize: 13 }}>{status}</div>}
+        </div>
       );
 }
 
@@ -71,25 +71,25 @@ function SheetSyncBlock({ onDone }) {
   
     return (
           <div className="card">
-                <div className="card-title">July onward - pull from live Google Sheet</div>div>
+                <div className="card-title">July onward - pull from live Google Sheet</div>
                 <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
-                        Needs a row in <code>sheet_sync_config</code>code> pointing at the live sheet
+                        Needs a row in <code>sheet_sync_config</code> pointing at the live sheet
                         (see README). Once set up, this reuses the exact same parser as manual upload.
-                </p>p>
+                </p>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                         <select className="cat-select" value={sheetType} onChange={(e) => setSheetType(e.target.value)}>
-                                  <option value="mis">MIS sheet</option>option>
-                                  <option value="pnl">P&amp;L sheet</option>option>
-                        </select>select>
+                                  <option value="mis">MIS sheet</option>
+                                  <option value="pnl">P&amp;L sheet</option>
+                        </select>
                         <select className="cat-select" value={month} onChange={(e) => setMonth(e.target.value)}>
-                          {MONTHS.map((m) => <option key={m} value={m}>{m}</option>option>)}
-                        </select>select>
+                          {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                        </select>
                         <button className="btn primary" onClick={trigger} disabled={busy}>
                           {busy ? 'Syncing...' : 'Sync now'}
-                        </button>button>
-                </div>div>
-            {status && <div style={{ marginTop: 10, fontSize: 13 }}>{status}</div>div>}
-          </div>div>
+                        </button>
+                </div>
+            {status && <div style={{ marginTop: 10, fontSize: 13 }}>{status}</div>}
+          </div>
         );
 }
 
@@ -100,7 +100,7 @@ export default function UploadPanel({ onUploaded }) {
                 <UploadBlock title="P&L sheet (margin + servicing lines)" endpoint="/api/upload/pnl" needsMonth onDone={onUploaded} />
                 <UploadBlock title="Card / bank statement (actualisation)" endpoint="/api/upload/card-statement" onDone={onUploaded} />
                 <SheetSyncBlock onDone={onUploaded} />
-          </>>
+          </>
         );
 }
 </></div>
