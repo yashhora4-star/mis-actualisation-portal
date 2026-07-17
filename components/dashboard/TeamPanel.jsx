@@ -51,46 +51,46 @@ export default function TeamPanel() {
   return (
         <>
               <div className="card">
-                      <div className="card-title">Invite a team member</div>div>
+                      <div className="card-title">Invite a team member</div>
                       <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
                                 They will get an email invite from Supabase. New members always join as
-                                <code> member</code>code> - they can view everything and tick services, but
+                                <code> member</code> - they can view everything and tick services, but
                                 can't upload sheets or add students, and can't change a tick once it's locked.
-                      </p>p>
+                      </p>
                       <div style={{ display: 'flex', gap: 10 }}>
                                 <input placeholder="email@leverageedu.com" value={email} onChange={(e) => setEmail(e.target.value)} style={{ flex: 1, padding: '9px 11px', border: '1px solid var(--border-2)', borderRadius: 6 }} />
                                 <input placeholder="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} style={{ flex: 1, padding: '9px 11px', border: '1px solid var(--border-2)', borderRadius: 6 }} />
-                                <button className="btn primary" onClick={invite} disabled={inviting}>{inviting ? 'Inviting...' : 'Invite'}</button>button>
-                      </div>div>
-                {err && <div className="error-text">{err}</div>div>}
-              </div>div>
+                                <button className="btn primary" onClick={invite} disabled={inviting}>{inviting ? 'Inviting...' : 'Invite'}</button>
+                      </div>
+                {err && <div className="error-text">{err}</div>}
+              </div>
         
               <div className="card">
-                      <div className="card-title">Team</div>div>
-                {loading ? <div>Loading...</div>div> : (
+                      <div className="card-title">Team</div>
+                {loading ? <div>Loading...</div> : (
                         <table>
-                                    <thead><tr><th>Name</th>th><th>Email</th>th><th>Role</th>th><th>Status</th>th><th></th>th></tr>tr></thead>thead>
+                                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
                                     <tbody>
                                       {users.map((u) => (
                           <tr key={u.id}>
-                                            <td>{u.name || '-'}</td>td>
-                                            <td>{u.email}</td>td>
-                                            <td><span className="tag">{u.role}</span>span></td>td>
-                                            <td><span className={`tag ${u.active ? '' : 'unmarked'}`}>{u.active ? 'Active' : 'Deactivated'}</span>span></td>td>
+                                            <td>{u.name || '-'}</td>
+                                            <td>{u.email}</td>
+                                            <td><span className="tag">{u.role}</span></td>
+                                            <td><span className={`tag ${u.active ? '' : 'unmarked'}`}>{u.active ? 'Active' : 'Deactivated'}</span></td>
                                             <td>
                                               {u.role !== 'superadmin' && (
                                                   <button className="btn" onClick={() => toggleActive(u)}>
                                                     {u.active ? 'Deactivate' : 'Reactivate'}
-                                                  </button>button>
+                                                  </button>
                                                                 )}
-                                            </td>td>
-                          </tr>tr>
+                                            </td>
+                          </tr>
                         ))}
-                                    </tbody>tbody>
-                        </table>table>
+                                    </tbody>
+                        </table>
                       )}
-              </div>div>
-        </>>
+              </div>
+        </>
       );
 }
 </>
