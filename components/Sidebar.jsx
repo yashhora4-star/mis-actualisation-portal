@@ -1,17 +1,25 @@
 'use client';
 import React, { useState } from 'react';
 
+// `fullAccessOnly` = superadmin or the Accounts POC (sees_all_students) - a
+// country-scoped POC only ever gets the Actualisation Sheet, per the
+// "nothing else on the portal" requirement for country-level access.
 const NAV = [
   { key: 'sheet', label: 'Actualisation Sheet' },
-  { key: 'cardowners', label: 'Card owner summary' },
+  { key: 'cardowners', label: 'Card owner summary', fullAccessOnly: true },
+  { key: 'banktransfers', label: 'Bank transfer summary', fullAccessOnly: true },
   { key: 'upload', label: 'Upload sheets', superadminOnly: true },
   { key: 'team', label: 'Team access', superadminOnly: true },
   ];
 
-export default function Sidebar({ active, onChange, role, pendingCount }) {
+export default function Sidebar({ active, onChange, role, pendingCount, seesAllStudents }) {
     const [collapsed, setCollapsed] = useState(false);
+    const fullAccess = role === 'superadmin' || !!seesAllStudents;
 
-  const items = NAV.filter((n) => !n.superadminOnly || role === 'superadmin').map((item, i) =>
+  const items = NAV
+        .filter((n) => !n.superadminOnly || role === 'superadmin')
+        .filter((n) => !n.fullAccessOnly || fullAccess)
+        .map((item, i) =>
         React.createElement('div', {
                 key: item.key,
                 className: 'nav-item ' + (active === item.key ? 'active' : ''),
@@ -23,7 +31,7 @@ export default function Sidebar({ active, onChange, role, pendingCount }) {
                                   item.key === 'sheet' && pendingCount > 0
                                     ? React.createElement('span', { className: 'badge' }, pendingCount)
                                     : null
-                                )
+                               )
                                                                                     );
 
   return React.createElement('aside', { className: 'sidebar', style: collapsed ? { width: 64 } : undefined },
@@ -47,7 +55,7 @@ export default function Sidebar({ active, onChange, role, pendingCount }) {
                                  React.createElement('nav', { className: 'nav' }, items),
                                  React.createElement('div', { className: 'sb-footer' },
                                                            !collapsed && 'Signed in as',
-                                                           React.createElement('div', { className: 'role-pill' }, role === 'superadmin' ? 'Superadmin' : 'Team member')
+                                                           React.createElement('div', { className: 'role-pill' }, role === 'superadmin' ? 'Superadmin' : (seesAllStudents ? 'Accounts POC' : 'Team member'))
                                                          )
                                );
 }
