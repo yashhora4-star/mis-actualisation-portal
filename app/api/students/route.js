@@ -1,6 +1,6 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getProfile, requireRole, CAN_WRITE } from '@/utils/roles';
+import { getProfile, requireRole, CAN_WRITE, getAccessScope, isAllowedCountry } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 import { resolvePackageKey } from '@/lib/reference-services';
@@ -8,18 +8,27 @@ import { resolvePackageKey } from '@/lib/reference-services';
 export async function GET(request) {
   try {
     const supabase = await getSupabaseServer();
-    await requireUser(supabase);
+    const user = await requireUser(supabase);
+    const profile = await getProfile(supabase, user.id);
+    const scope = await getAccessScope(supabase, profile);
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
 
     let misQuery = supabase
       .from('mis_records')
-      .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, email, country, package, created_at )')
+      .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, outstanding_updated_at, net_amount_after_deduction, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, email, country, package, created_at )')
       .order('month', { ascending: false });
     if (month) misQuery = misQuery.eq('month', month);
 
-    const { data: misRows, error: misErr } = await misQuery;
+    const { data: misRowsRaw, error: misErr } = await misQuery;
     if (misErr) throw misErr;
+
+    // POC members are scoped to the countries assigned to them in Team access
+    // (superadmin and the Accounts POC see everyone) - filtered here so every
+    // downstream calculation (stats, totals) only reflects what they can see.
+    const misRows = scope.allCountries
+      ? misRowsRaw
+      : misRowsRaw.filter((r) => isAllowedCountry(scope, r.students?.country));
 
     const studentIds = misRows.map((r) => r.students?.id).filter(Boolean);
     const misRecordIds = misRows.map((r) => r.id).filter(Boolean);
@@ -175,6 +184,7 @@ export async function POST(request) {
     const total_sale_amount = body.total_sale_amount;
     const collected = body.collected;
     const outstanding = body.outstanding;
+    const net_amount_after_deduction = body.net_amount_after_deduction;
     if (!stp_code || !student_name || !month) {
       return handle({ message: 'stp_code, student_name, and month are required', status: 400 });
     }
@@ -203,6 +213,7 @@ export async function POST(request) {
           total_sale_amount: total_sale_amount != null ? total_sale_amount : null,
           collected: collected != null ? collected : null,
           outstanding: outstanding != null ? outstanding : null,
+          net_amount_after_deduction: net_amount_after_deduction != null ? net_amount_after_deduction : null,
           reference_package_key: packageKey,
           source: 'manual',
           uploaded_by: user.id,
@@ -259,6 +270,7 @@ export async function PATCH(request) {
     if (body.total_sale_amount !== undefined) misPatch.total_sale_amount = body.total_sale_amount;
     if (body.collected !== undefined) misPatch.collected = body.collected;
     if (body.outstanding !== undefined) misPatch.outstanding = body.outstanding;
+    if (body.net_amount_after_deduction !== undefined) misPatch.net_amount_after_deduction = body.net_amount_after_deduction;
     if (body.reference_package_key !== undefined) misPatch.reference_package_key = body.reference_package_key;
     let updatedMis = null;
     if (Object.keys(misPatch).length) {
