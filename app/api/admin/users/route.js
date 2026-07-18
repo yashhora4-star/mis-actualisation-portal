@@ -21,10 +21,18 @@ export async function GET() {
           await requireSuperadmin(supabase);
           const { data, error } = await supabase
             .from('users')
-            .select('id, email, name, role, active, created_at')
+            .select('id, email, name, role, active, sees_all_students, created_at')
             .order('created_at');
           if (error) throw error;
-          return ok({ users: data });
+
+      const { data: accessRows } = await supabase.from('user_country_access').select('user_id, country');
+          const countriesByUser = {};
+          for (const r of accessRows || []) {
+                  (countriesByUser[r.user_id] = countriesByUser[r.user_id] || []).push(r.country);
+          }
+          const users = (data || []).map((u) => ({ ...u, countries: countriesByUser[u.id] || [] }));
+
+      return ok({ users });
     } catch (err) {
           return handle(err);
     }
@@ -61,26 +69,49 @@ export async function POST(request) {
     }
 }
 
-// PATCH { id, active } - deactivate/reactivate a member (superadmin only)
+// PATCH { id, active?, sees_all_students?, countries? } - manage a member's
+// active status, whether they're the Accounts POC who sees every student,
+// and (for country POCs) which countries' students they're scoped to.
 export async function PATCH(request) {
     try {
           const supabase = await getSupabaseServer();
           const { user } = await requireSuperadmin(supabase);
-          const { id, active } = await request.json();
-          if (!id || active === undefined) return handle({ message: 'id and active are required', status: 400 });
+          const { id, active, sees_all_students, countries } = await request.json();
+          if (!id) return handle({ message: 'id is required', status: 400 });
 
       const admin = getSupabaseAdmin();
-          const { data, error } = await admin
-            .from('users')
-            .update({ active })
-            .eq('id', id)
-            .select()
-            .single();
-          if (error) throw error;
+
+      const patch = {};
+          if (active !== undefined) patch.active = active;
+          if (sees_all_students !== undefined) patch.sees_all_students = sees_all_students;
+
+      let data = null;
+          if (Object.keys(patch).length) {
+                  const res = await admin.from('users').update(patch).eq('id', id).select().single();
+                  if (res.error) throw res.error;
+                  data = res.data;
+          }
+
+      if (Array.isArray(countries)) {
+                  const { error: delErr } = await admin.from('user_country_access').delete().eq('user_id', id);
+                  if (delErr) throw delErr;
+                  if (countries.length) {
+                            const { error: insErr } = await admin
+                              .from('user_country_access')
+                              .insert(countries.map((country) => ({ user_id: id, country })));
+                            if (insErr) throw insErr;
+                  }
+          }
+
+      if (!data) {
+                  const res = await admin.from('users').select().eq('id', id).single();
+                  data = res.data;
+          }
 
       await logActivity(admin, {
-              entityType: 'user', entityId: id, action: active ? 'reactivated' : 'deactivated',
-              performedBy: user.id,
+              entityType: 'user', entityId: id,
+              action: active !== undefined ? (active ? 'reactivated' : 'deactivated') : 'edited',
+              performedBy: user.id, details: { active, sees_all_students, countries },
       });
 
       return ok({ user: data });
