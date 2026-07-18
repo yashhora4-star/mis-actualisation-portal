@@ -67,11 +67,17 @@ export async function GET(request) {
     // what's still left to use (balance) and flag the record "Closed" once
     // every billable service on the checklist has been ticked.
     const packageKeys = [...new Set(misRows.map((r) => r.reference_package_key).filter(Boolean))];
+    // Only "fixed" cost_type services count toward the servicing total and
+    // the Closed/In-progress threshold - "variable" ones are the student's own
+    // actual spend (no fixed reference cost, never ticked by the accounts team)
+    // and "in_house" ones are free, so counting them made every record look
+    // permanently "In progress" even once every billable item was ticked.
     let refSvcRows = [];
     if (packageKeys.length) {
       const { data } = await supabase
         .from('reference_services')
         .select('package_key, reference_cost_inr')
+        .eq('cost_type', 'fixed')
         .in('package_key', packageKeys);
       refSvcRows = data || [];
     }
