@@ -1,6 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api } from '@/services/api';
+
+// Same country list used on the Add Student modal - kept in sync manually
+// since POC scoping is keyed off the exact same `country` values.
+const COUNTRY_OPTIONS = ['Italy', 'Germany', 'UK', 'Other'];
 
 export default function TeamPanel() {
     const [users, setUsers] = useState([]);
@@ -9,6 +13,10 @@ export default function TeamPanel() {
     const [email, setEmail] = useState('');
     const [name, setName] = useState('');
     const [inviting, setInviting] = useState(false);
+    // Which user's access editor is expanded
+    const [editingId, setEditingId] = useState(null);
+    const [draft, setDraft] = useState({ sees_all_students: false, countries: [] });
+    const [saving, setSaving] = useState(false);
 
   async function load() {
         setLoading(true);
@@ -48,6 +56,50 @@ export default function TeamPanel() {
         }
   }
 
+  function openAccessEditor(u) {
+        setEditingId(u.id);
+        setDraft({ sees_all_students: !!u.sees_all_students, countries: u.countries || [] });
+  }
+
+  function toggleDraftCountry(country) {
+        setDraft((d) => ({
+                ...d,
+                countries: d.countries.includes(country)
+                  ? d.countries.filter((c) => c !== country)
+                  : [...d.countries, country],
+        }));
+  }
+
+  async function saveAccess(u) {
+        setSaving(true);
+        setErr('');
+        try {
+                await api('/api/admin/users', {
+                        method: 'PATCH',
+                        body: {
+                                id: u.id,
+                                sees_all_students: draft.sees_all_students,
+                                // If they're the Accounts POC, country scoping is moot - clear it
+                                // so the intent stays unambiguous in the DB.
+                                countries: draft.sees_all_students ? [] : draft.countries,
+                        },
+                });
+                setEditingId(null);
+                await load();
+        } catch (e) {
+                setErr(e.message);
+        } finally {
+                setSaving(false);
+        }
+  }
+
+  function accessSummary(u) {
+        if (u.role === 'superadmin') return 'All students (superadmin)';
+        if (u.sees_all_students) return 'All students (Accounts POC)';
+        if (u.countries && u.countries.length) return u.countries.join(', ');
+        return 'No country assigned yet';
+  }
+
   return (
         <>
               <div className="card">
@@ -56,6 +108,8 @@ export default function TeamPanel() {
                                 They will get an email invite from Supabase. New members always join as
                                 <code> member</code> - they can view everything and tick services, but
                                 can't upload sheets or add students, and can't change a tick once it's locked.
+                                After inviting, assign them a country (or make them the Accounts POC) below
+                                so they only see the students relevant to them.
                       </p>
                       <div style={{ display: 'flex', gap: 10 }}>
                                 <input placeholder="email@leverageedu.com" value={email} onChange={(e) => setEmail(e.target.value)} style={{ flex: 1, padding: '9px 11px', border: '1px solid var(--border-2)', borderRadius: 6 }} />
@@ -64,27 +118,75 @@ export default function TeamPanel() {
                       </div>
                 {err && <div className="error-text">{err}</div>}
               </div>
-        
+
               <div className="card">
                       <div className="card-title">Team</div>
                 {loading ? <div>Loading...</div> : (
                         <table>
-                                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+                                    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Student access</th><th></th></tr></thead>
                                     <tbody>
                                       {users.map((u) => (
-                          <tr key={u.id}>
+                            <Fragment key={u.id}>
+                            <tr>
                                             <td>{u.name || '-'}</td>
                                             <td>{u.email}</td>
                                             <td><span className="tag">{u.role}</span></td>
                                             <td><span className={`tag ${u.active ? '' : 'unmarked'}`}>{u.active ? 'Active' : 'Deactivated'}</span></td>
-                                            <td>
-                                              {u.role !== 'superadmin' && (
+                                            <td style={{ fontSize: 13 }}>{accessSummary(u)}</td>
+                                            <td style={{ display: 'flex', gap: 8 }}>
+                                             {u.role !== 'superadmin' && (
+                                                <>
+                                                  <button className="btn" onClick={() => (editingId === u.id ? setEditingId(null) : openAccessEditor(u))}>
+                                                    {editingId === u.id ? 'Close' : 'Set access'}
+                                                  </button>
                                                   <button className="btn" onClick={() => toggleActive(u)}>
                                                     {u.active ? 'Deactivate' : 'Reactivate'}
                                                   </button>
+                                                </>
                                                                 )}
                                             </td>
                           </tr>
+                          {editingId === u.id && (
+                            <tr>
+                              <td colSpan={6} style={{ background: 'var(--surface-2, #f7f7f8)', padding: 14, borderRadius: 8 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={draft.sees_all_students}
+                                      onChange={(e) => setDraft((d) => ({ ...d, sees_all_students: e.target.checked }))}
+                                    />
+                                    Accounts POC - sees and can act on every student, in every country
+                                  </label>
+                                  {!draft.sees_all_students && (
+                                    <div>
+                                      <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
+                                        Or scope this person to specific countries - they'll only see and tick services for students in these countries, and nothing else on the portal.
+                                      </div>
+                                      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                                        {COUNTRY_OPTIONS.map((c) => (
+                                          <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={draft.countries.includes(c)}
+                                              onChange={() => toggleDraftCountry(c)}
+                                            />
+                                            {c}
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <button className="btn primary" onClick={() => saveAccess(u)} disabled={saving}>
+                                      {saving ? 'Saving...' : 'Save access'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         ))}
                                     </tbody>
                         </table>
