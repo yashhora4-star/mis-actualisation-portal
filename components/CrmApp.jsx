@@ -7,6 +7,7 @@ import { api } from '@/services/api';
 import ActualisationSheet from '@/components/dashboard/ActualisationSheet';
 import UploadPanel from '@/components/dashboard/UploadPanel';
 import TeamPanel from '@/components/dashboard/TeamPanel';
+import CardOwnerSummary from '@/components/dashboard/CardOwnerSummary';
 
 export default function CrmApp() {
       const [boot, setBoot] = useState(null);
@@ -40,6 +41,7 @@ export default function CrmApp() {
                                                            React.createElement(Topbar, { active, month, onMonthChange: setMonth, months: boot?.months }),
                                                            React.createElement('div', { className: 'content' },
                                                                                        active === 'sheet' && React.createElement(ActualisationSheet, { month, role }),
+                                                                                       active === 'cardowners' && React.createElement(CardOwnerSummary),
                                                                                        active === 'upload' && role === 'superadmin' && React.createElement(UploadPanel, { onUploaded: loadBootstrap }),
                                                                                        active === 'team' && role === 'superadmin' && React.createElement(TeamPanel)
                                                                                      )
