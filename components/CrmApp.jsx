@@ -8,6 +8,7 @@ import ActualisationSheet from '@/components/dashboard/ActualisationSheet';
 import UploadPanel from '@/components/dashboard/UploadPanel';
 import TeamPanel from '@/components/dashboard/TeamPanel';
 import CardOwnerSummary from '@/components/dashboard/CardOwnerSummary';
+import BankTransferSummary from '@/components/dashboard/BankTransferSummary';
 
 export default function CrmApp() {
       const [boot, setBoot] = useState(null);
@@ -33,15 +34,17 @@ export default function CrmApp() {
       if (err) return React.createElement('div', { className: 'content error-text' }, err);
 
   const role = boot?.profile?.role;
+      const seesAllStudents = !!boot?.profile?.sees_all_students;
       const pendingCount = (boot?.pendingActualisation?.cardTransactions || 0) + (boot?.pendingActualisation?.servicingLines || 0);
 
   return React.createElement('div', { className: 'app' },
-                                 React.createElement(Sidebar, { active, onChange: setActive, role, pendingCount }),
+                                 React.createElement(Sidebar, { active, onChange: setActive, role, pendingCount, seesAllStudents }),
                                  React.createElement('div', { className: 'main' },
                                                            React.createElement(Topbar, { active, month, onMonthChange: setMonth, months: boot?.months }),
                                                            React.createElement('div', { className: 'content' },
                                                                                        active === 'sheet' && React.createElement(ActualisationSheet, { month, role }),
-                                                                                       active === 'cardowners' && React.createElement(CardOwnerSummary),
+                                                                                       active === 'cardowners' && (role === 'superadmin' || seesAllStudents) && React.createElement(CardOwnerSummary),
+                                                                                       active === 'banktransfers' && (role === 'superadmin' || seesAllStudents) && React.createElement(BankTransferSummary),
                                                                                        active === 'upload' && role === 'superadmin' && React.createElement(UploadPanel, { onUploaded: loadBootstrap }),
                                                                                        active === 'team' && role === 'superadmin' && React.createElement(TeamPanel)
                                                                                      )
