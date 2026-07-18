@@ -147,3 +147,92 @@ export async function POST(request) {
     return handle(err);
   }
 }
+
+export async function PATCH(request) {
+  try {
+    const supabase = await getSupabaseServer();
+    const user = await requireUser(supabase);
+    const profile = await getProfile(supabase, user.id);
+    requireRole(profile, CAN_WRITE);
+
+    const body = await request.json();
+    const misRecordId = body.mis_record_id;
+    if (!misRecordId) return handle({ message: 'mis_record_id is required', status: 400 });
+
+    const admin = getSupabaseAdmin();
+
+    const { data: existing, error: fetchErr } = await admin
+      .from('mis_records')
+      .select('id, student_id, month')
+      .eq('id', misRecordId)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    const studentPatch = {};
+    if (body.student_name !== undefined) studentPatch.student_name = body.student_name;
+    if (body.email !== undefined) studentPatch.email = body.email;
+    if (body.country !== undefined) studentPatch.country = body.country;
+    if (body.package !== undefined) studentPatch.package = body.package;
+    if (Object.keys(studentPatch).length) {
+      const { error } = await admin.from('students').update(studentPatch).eq('id', existing.student_id);
+      if (error) throw error;
+    }
+
+    const misPatch = {};
+    if (body.total_sale_amount !== undefined) misPatch.total_sale_amount = body.total_sale_amount;
+    if (body.collected !== undefined) misPatch.collected = body.collected;
+    if (body.outstanding !== undefined) misPatch.outstanding = body.outstanding;
+    if (body.reference_package_key !== undefined) misPatch.reference_package_key = body.reference_package_key;
+    let updatedMis = null;
+    if (Object.keys(misPatch).length) {
+      const { data, error } = await admin.from('mis_records').update(misPatch).eq('id', misRecordId).select().single();
+      if (error) throw error;
+      updatedMis = data;
+    }
+
+    await logActivity(admin, {
+      entityType: 'mis_record', entityId: misRecordId, action: 'edited',
+      performedBy: user.id, details: { student: studentPatch, mis: misPatch },
+    });
+
+    return ok({ mis_record: updatedMis });
+  } catch (err) {
+    return handle(err);
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const supabase = await getSupabaseServer();
+    const user = await requireUser(supabase);
+    const profile = await getProfile(supabase, user.id);
+    requireRole(profile, CAN_WRITE);
+
+    const { searchParams } = new URL(request.url);
+    const misRecordId = searchParams.get('mis_record_id');
+    if (!misRecordId) return handle({ message: 'mis_record_id is required', status: 400 });
+
+    const admin = getSupabaseAdmin();
+
+    const { data: existing, error: fetchErr } = await admin
+      .from('mis_records')
+      .select('id, student_id, month')
+      .eq('id', misRecordId)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    await admin.from('student_services').delete().eq('student_id', existing.student_id).eq('month', existing.month);
+    await admin.from('pnl_records').delete().eq('student_id', existing.student_id).eq('month', existing.month);
+    const { error: delErr } = await admin.from('mis_records').delete().eq('id', misRecordId);
+    if (delErr) throw delErr;
+
+    await logActivity(admin, {
+      entityType: 'mis_record', entityId: misRecordId, action: 'deleted',
+      performedBy: user.id, details: { student_id: existing.student_id, month: existing.month },
+    });
+
+    return ok({ deleted: true });
+  } catch (err) {
+    return handle(err);
+  }
+}
