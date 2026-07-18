@@ -1,6 +1,6 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getProfile } from '@/utils/roles';
+import { getProfile, getAccessScope, isAllowedCountry } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 
@@ -9,11 +9,20 @@ import { logActivity } from '@/lib/activity';
 export async function GET(request) {
     try {
           const supabase = await getSupabaseServer();
-          await requireUser(supabase);
+          const user = await requireUser(supabase);
           const { searchParams } = new URL(request.url);
           const studentId = searchParams.get('student_id');
           const month = searchParams.get('month');
           if (!studentId || !month) return handle({ message: 'student_id and month are required', status: 400 });
+
+      const profile = await getProfile(supabase, user.id);
+          const scope = await getAccessScope(supabase, profile);
+          if (!scope.allCountries) {
+                  const { data: studentRow } = await supabase.from('students').select('country').eq('id', studentId).maybeSingle();
+                  if (!isAllowedCountry(scope, studentRow?.country)) {
+                            return handle({ message: 'Not authorized for this student', status: 403 });
+                  }
+          }
 
       const { data: misRecord } = await supabase
             .from('mis_records')
@@ -86,6 +95,14 @@ export async function POST(request) {
                   return handle({ message: 'student_id, month, reference_service_id are required', status: 400 });
           }
 
+      const scope = await getAccessScope(supabase, profile);
+          if (!scope.allCountries) {
+                  const { data: studentRow } = await supabase.from('students').select('country').eq('id', student_id).maybeSingle();
+                  if (!isAllowedCountry(scope, studentRow?.country)) {
+                            return handle({ message: 'Not authorized for this student', status: 403 });
+                  }
+          }
+
       const admin = getSupabaseAdmin();
           const isSuperadmin = profile.role === 'superadmin';
 
@@ -129,13 +146,35 @@ export async function POST(request) {
             .single();
           if (error) throw error;
 
+      const action = existing ? (isSuperadmin ? 'overridden' : 'updated') : (is_selected ? 'ticked' : 'unticked');
+          const details = { student_id, month, reference_service_id, is_selected, service_date };
+
       await logActivity(admin, {
               entityType: 'student_service',
               entityId: saved.id,
-              action: existing ? (isSuperadmin ? 'overridden' : 'updated') : (is_selected ? 'ticked' : 'unticked'),
+              action,
               performedBy: user.id,
-              details: { student_id, month, reference_service_id, is_selected, service_date },
+              details,
       });
+
+      // Also log against the student's MIS record for this month, so a tick
+      // made from the service checklist (by anyone, member or superadmin)
+      // shows up in that row's own Activity History, not just the per-service one.
+      const { data: misRow } = await admin
+            .from('mis_records')
+            .select('id')
+            .eq('student_id', student_id)
+            .eq('month', month)
+            .maybeSingle();
+          if (misRow?.id) {
+                  await logActivity(admin, {
+                            entityType: 'mis_record',
+                            entityId: misRow.id,
+                            action,
+                            performedBy: user.id,
+                            details,
+                  });
+          }
 
       return ok({ tick: saved });
     } catch (err) {
