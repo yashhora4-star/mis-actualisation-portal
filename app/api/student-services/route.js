@@ -61,6 +61,8 @@ export async function GET(request) {
                         proof_file_url: tick?.proof_file_url || null,
                         proof_file_name: tick?.proof_file_name || null,
                         proof_uploaded_at: tick?.proof_uploaded_at || null,
+                        payment_mode: tick?.payment_mode || null,
+                        card_owner: tick?.card_owner || null,
               };
       });
 
