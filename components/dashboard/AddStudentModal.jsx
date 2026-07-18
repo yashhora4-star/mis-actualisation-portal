@@ -2,7 +2,9 @@
 import { useState } from 'react';
 import { api } from '@/services/api';
 
-const PACKAGE_OPTIONS = ['Italy', 'Germany', 'MBBS', 'L1E2E'];
+// Actual package values used across the MIS sheet tabs (April-July 2026),
+// not a guess - pulled from the real "Package" column values on file.
+const PACKAGE_OPTIONS = ['L1E2E', 'Italy', 'Germany', 'MBBS', 'VAS', 'Ausbildung', 'OEC', 'IVY'];
 const COUNTRY_OPTIONS = ['Italy', 'Germany', 'UK', 'Other'];
 
 export default function AddStudentModal({ onClose, onAdded, student }) {
@@ -22,6 +24,21 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
   const [err, setErr] = useState('');
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
+
+  // Outstanding = Total sale - Collected, recalculated whenever either input
+  // changes. Still a plain input underneath, so it can be overridden by hand
+  // afterwards if the real-world number differs (e.g. write-offs, discounts).
+  function setAndRecalcOutstanding(field, value) {
+    setForm((f) => {
+      const next = { ...f, [field]: value };
+      const sale = Number(next.total_sale_amount);
+      const collected = Number(next.collected);
+      if (next.total_sale_amount !== '' && next.collected !== '' && Number.isFinite(sale) && Number.isFinite(collected)) {
+        next.outstanding = String(sale - collected);
+      }
+      return next;
+    });
+  }
 
   async function submit() {
     if (!isEdit && (!form.stp_code || !form.student_name || !form.month)) {
@@ -99,8 +116,8 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             <label>Month {isEdit ? '' : '*'}</label>
             <input value={form.month} disabled={isEdit} onChange={(e) => set('month', e.target.value)} />
           </div>
-          <div className="field"><label>Total sale amount</label><input value={form.total_sale_amount} onChange={(e) => set('total_sale_amount', e.target.value)} /></div>
-          <div className="field"><label>Collected</label><input value={form.collected} onChange={(e) => set('collected', e.target.value)} /></div>
+          <div className="field"><label>Total sale amount</label><input value={form.total_sale_amount} onChange={(e) => setAndRecalcOutstanding('total_sale_amount', e.target.value)} /></div>
+          <div className="field"><label>Collected</label><input value={form.collected} onChange={(e) => setAndRecalcOutstanding('collected', e.target.value)} /></div>
           <div className="field"><label>Outstanding</label><input value={form.outstanding} onChange={(e) => set('outstanding', e.target.value)} /></div>
         </div>
         {err && <div className="error-text">{err}</div>}
