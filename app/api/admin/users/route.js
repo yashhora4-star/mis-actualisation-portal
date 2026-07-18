@@ -21,7 +21,7 @@ export async function GET() {
           await requireSuperadmin(supabase);
           const { data, error } = await supabase
             .from('users')
-            .select('id, email, name, role, active, sees_all_students, created_at')
+            .select('id, email, name, role, active, sees_all_students, is_mis_poc, created_at')
             .order('created_at');
           if (error) throw error;
 
@@ -69,14 +69,15 @@ export async function POST(request) {
     }
 }
 
-// PATCH { id, active?, sees_all_students?, countries? } - manage a member's
-// active status, whether they're the Accounts POC who sees every student,
-// and (for country POCs) which countries' students they're scoped to.
+// PATCH { id, active?, sees_all_students?, is_mis_poc?, countries? } - manage
+// a member's active status, whether they're the Accounts POC who sees every
+// student, whether they're an MIS POC who can add/edit students and record
+// payments, and (for country POCs) which countries' students they're scoped to.
 export async function PATCH(request) {
     try {
           const supabase = await getSupabaseServer();
           const { user } = await requireSuperadmin(supabase);
-          const { id, active, sees_all_students, countries } = await request.json();
+          const { id, active, sees_all_students, is_mis_poc, countries } = await request.json();
           if (!id) return handle({ message: 'id is required', status: 400 });
 
       const admin = getSupabaseAdmin();
@@ -84,6 +85,7 @@ export async function PATCH(request) {
       const patch = {};
           if (active !== undefined) patch.active = active;
           if (sees_all_students !== undefined) patch.sees_all_students = sees_all_students;
+          if (is_mis_poc !== undefined) patch.is_mis_poc = is_mis_poc;
 
       let data = null;
           if (Object.keys(patch).length) {
@@ -111,7 +113,7 @@ export async function PATCH(request) {
       await logActivity(admin, {
               entityType: 'user', entityId: id,
               action: active !== undefined ? (active ? 'reactivated' : 'deactivated') : 'edited',
-              performedBy: user.id, details: { active, sees_all_students, countries },
+              performedBy: user.id, details: { active, sees_all_students, is_mis_poc, countries },
       });
 
       return ok({ user: data });
