@@ -1,16 +1,36 @@
 'use client';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/services/api';
 import { inr, pct } from '@/lib/format';
 import AddStudentModal from '@/components/dashboard/AddStudentModal';
 import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 import ServiceChecklist from '@/components/dashboard/ServiceChecklist';
 
+function fmtDate(d) {
+  if (!d) return '-';
+  const parsed = new Date(d);
+  return Number.isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('en-IN');
+}
+
+// A single label/value pair in the detail panel.
+function Field({ label, children }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.03em' }}>{label}</div>
+      <div style={{ fontSize: 14, marginTop: 2 }}>{children}</div>
+    </div>
+  );
+}
+
+// Master-detail layout: a simple left-hand list of student names, and a
+// detail panel on the right for whichever student is selected - replacing
+// the old dense, expandable multi-column table which got unwieldy once
+// there were more than a handful of fields per student.
 export default function ActualisationSheet({ month, role }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [expanded, setExpanded] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
@@ -34,6 +54,7 @@ export default function ActualisationSheet({ month, role }) {
     if (!window.confirm(`Delete ${r.students?.student_name} - ${r.month}? This removes their MIS record, P&L record, and ticked services for this month.`)) return;
     try {
       await api(`/api/students?mis_record_id=${r.id}`, { method: 'DELETE' });
+      if (selectedId === r.id) setSelectedId(null);
       load();
     } catch (e) {
       setErr(e.message);
@@ -55,6 +76,8 @@ export default function ActualisationSheet({ month, role }) {
         'Collected': r.collected ?? '',
         'Last Collection Date': r.last_collection_date || '',
         'Outstanding': r.outstanding ?? '',
+        'Outstanding Picked Date': r.outstanding_updated_at ? new Date(r.outstanding_updated_at).toLocaleDateString('en-IN') : '',
+        'Net Amount After Deduction': r.net_amount_after_deduction ?? '',
         'Net After Subvention/GST': r.net_after_charges ?? '',
         'Actualised Cost': r.actualised_cost ?? '',
         'Servicing Balance': r.servicing_balance ?? '',
@@ -86,7 +109,8 @@ export default function ActualisationSheet({ month, role }) {
   const totalCollected = filteredRows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
   const totalActualised = filteredRows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
   const totalNetAfterCharges = filteredRows.reduce((s, r) => s + (Number(r.net_after_charges) || 0), 0);
-  const colSpan = role === 'superadmin' ? 17 : 16;
+
+  const selected = filteredRows.find((r) => r.id === selectedId) || null;
 
   return (
     <>
@@ -117,118 +141,123 @@ export default function ActualisationSheet({ month, role }) {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <span>Students</span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by STP code or Leverage email"
-              style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, minWidth: 260 }}
-            />
-            <button className="btn" onClick={downloadXlsx}>Download sheet</button>
-            {role === 'superadmin' && (
-              <button className="btn primary" onClick={() => setShowAdd(true)}>+ Add student</button>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', minHeight: 480 }}>
+          <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: 12, borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input
+                type="text"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search by STP code, name or email"
+                style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, width: '100%' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn" onClick={downloadXlsx} style={{ flex: 1 }}>Download sheet</button>
+                {role === 'superadmin' && (
+                  <button className="btn primary" onClick={() => setShowAdd(true)} style={{ flex: 1 }}>+ Add</button>
+                )}
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {filteredRows.map((r) => (
+                <div
+                  key={r.id}
+                  onClick={() => setSelectedId(r.id)}
+                  style={{
+                    padding: '10px 12px',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    background: selectedId === r.id ? 'var(--surface-2)' : 'transparent',
+                    borderLeft: selectedId === r.id ? '3px solid var(--accent, #4f7cff)' : '3px solid transparent',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.students?.student_name || 'Unnamed'}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                    <span>{r.students?.stp_code} - {r.month}</span>
+                    <span className={`tag ${r.status === 'Closed' ? 'ac' : ''}`} style={{ fontSize: 11 }}>{r.status}</span>
+                  </div>
+                </div>
+              ))}
+              {!filteredRows.length && (
+                <div className="empty-state">{needle ? 'No students match that search.' : 'No students for this month yet.'}</div>
+              )}
+            </div>
+          </div>
+
+          <div style={{ flex: 1, padding: 20, overflowY: 'auto' }}>
+            {!selected && (
+              <div className="empty-state">Select a student from the list to see their details.</div>
+            )}
+            {selected && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>{selected.students?.student_name}</div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>
+                      {selected.students?.stp_code} - {selected.students?.email || 'no email'} - {selected.students?.country || '-'}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>
+                      {selected.month}
+                      {' - '}
+                      {selected.students?.package || '-'}
+                      {selected.reference_package_key ? <span className="tag" style={{ marginLeft: 6 }}>{selected.reference_package_key}</span> : null}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn" onClick={() => setHistoryFor({ type: 'mis_record', id: selected.id, label: selected.students?.student_name })}>
+                      History
+                    </button>
+                    {role === 'superadmin' && (
+                      <>
+                        <button className="btn" onClick={() => setEditRow({
+                          mis_record_id: selected.id,
+                          stp_code: selected.students?.stp_code,
+                          student_name: selected.students?.student_name,
+                          email: selected.students?.email,
+                          country: selected.students?.country,
+                          package: selected.students?.package,
+                          month: selected.month,
+                          total_sale_amount: selected.total_sale_amount,
+                          collected: selected.collected,
+                          outstanding: selected.outstanding,
+                          net_amount_after_deduction: selected.net_amount_after_deduction,
+                        })}>Edit</button>
+                        <button className="btn" style={{ color: 'var(--red)' }} onClick={() => deleteRow(selected)}>Delete</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16, background: 'var(--surface-2)', padding: 14, borderRadius: 8, marginBottom: 20 }}>
+                  <Field label="Sale amount">Rs {inr(selected.total_sale_amount)}</Field>
+                  <Field label="Collected">Rs {inr(selected.collected)}</Field>
+                  <Field label="Last collection date">{fmtDate(selected.last_collection_date)}</Field>
+                  <Field label="Outstanding">Rs {inr(selected.outstanding)}</Field>
+                  <Field label="Outstanding picked on">{fmtDate(selected.outstanding_updated_at)}</Field>
+                  <Field label="Net amount after deduction">{selected.net_amount_after_deduction != null ? `Rs ${inr(selected.net_amount_after_deduction)}` : '-'}</Field>
+                  <Field label="Net after subvention/GST">Rs {inr(selected.net_after_charges)}</Field>
+                  <Field label="Servicing balance">Rs {inr(selected.servicing_balance)}</Field>
+                  <Field label="Margin %">{pct(selected.actualised_margin_pct)}</Field>
+                  <Field label="Status"><span className={`tag ${selected.status === 'Closed' ? 'ac' : ''}`}>{selected.status}</span></Field>
+                  <Field label="Card owner">
+                    {Object.keys(selected.card_owners || {}).length
+                      ? Object.entries(selected.card_owners).map(([owner, amt]) => (
+                          <div key={owner}>{owner}: Rs {inr(amt)}</div>
+                        ))
+                      : '-'}
+                  </Field>
+                </div>
+
+                <ServiceChecklist
+                  studentId={selected.students?.id}
+                  month={selected.month}
+                  role={role}
+                  onChanged={load}
+                />
+              </>
             )}
           </div>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Month</th>
-              <th>Student</th>
-              <th>STP</th>
-              <th>Package</th>
-              <th>Added</th>
-              <th className="num-cell">Sale amount</th>
-              <th className="num-cell">Collected</th>
-              <th>Last collection date</th>
-              <th className="num-cell">Outstanding</th>
-              <th className="num-cell">Net after charges</th>
-              <th className="num-cell">Servicing balance</th>
-              <th>Status</th>
-              <th className="num-cell">Margin %</th>
-              <th>Card owner</th>
-              <th>Activity</th>
-              {role === 'superadmin' && <th>Manage</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((r) => {
-              const isOpen = expanded === r.id;
-              return (
-                <Fragment key={r.id}>
-                  <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : r.id)}>
-                    <td>{isOpen ? 'v' : '>'}</td>
-                    <td>{r.month}</td>
-                    <td>{r.students?.student_name}</td>
-                    <td className="tag">{r.students?.stp_code}</td>
-                    <td>{r.students?.package || '-'}{r.reference_package_key ? <span className="tag" style={{ marginLeft: 6 }}>{r.reference_package_key}</span> : null}</td>
-                    <td>{r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '-'}</td>
-                    <td className="num-cell">Rs {inr(r.total_sale_amount)}</td>
-                    <td className="num-cell">Rs {inr(r.collected)}</td>
-                    <td>{r.last_collection_date ? new Date(r.last_collection_date).toLocaleDateString('en-IN') : '-'}</td>
-                    <td className="num-cell">Rs {inr(r.outstanding)}</td>
-                    <td className="num-cell">Rs {inr(r.net_after_charges)}</td>
-                    <td className="num-cell">Rs {inr(r.servicing_balance)}</td>
-                    <td><span className={`tag ${r.status === 'Closed' ? 'ac' : ''}`}>{r.status}</span></td>
-                    <td className="num-cell">{pct(r.actualised_margin_pct)}</td>
-                    <td style={{ fontSize: 12 }}>
-                      {Object.keys(r.card_owners || {}).length
-                        ? Object.entries(r.card_owners).map(([owner, amt]) => (
-                            <div key={owner}>{owner}: Rs {inr(amt)}</div>
-                          ))
-                        : '-'}
-                    </td>
-                    <td>
-                      <button className="btn" onClick={(e) => { e.stopPropagation(); setHistoryFor({ type: 'mis_record', id: r.id, label: r.students?.student_name }); }}>
-                        History
-                      </button>
-                    </td>
-                    {role === 'superadmin' && (
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                          <button className="btn" onClick={() => setEditRow({
-                            mis_record_id: r.id,
-                            stp_code: r.students?.stp_code,
-                            student_name: r.students?.student_name,
-                            email: r.students?.email,
-                            country: r.students?.country,
-                            package: r.students?.package,
-                            month: r.month,
-                            total_sale_amount: r.total_sale_amount,
-                            collected: r.collected,
-                            outstanding: r.outstanding,
-                          })}>Edit</button>
-                          <button className="btn" style={{ color: 'var(--red)' }} onClick={() => deleteRow(r)}>Delete</button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                  {isOpen && (
-                    <tr>
-                      <td colSpan={colSpan} style={{ background: 'var(--surface-2)', padding: 0 }}>
-                        <ServiceChecklist
-                          studentId={r.students?.id}
-                          month={r.month}
-                          role={role}
-                          onChanged={load}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-            {!filteredRows.length && (
-              <tr><td colSpan={colSpan} className="empty-state">{needle ? 'No students match that search.' : 'No students for this month yet.'}</td></tr>
-            )}
-          </tbody>
-        </table>
         </div>
       </div>
 
