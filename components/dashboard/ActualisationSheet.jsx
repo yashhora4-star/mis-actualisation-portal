@@ -5,6 +5,7 @@ import { inr, pct } from '@/lib/format';
 import AddStudentModal from '@/components/dashboard/AddStudentModal';
 import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 import ServiceChecklist from '@/components/dashboard/ServiceChecklist';
+import CardOwnerSummary from '@/components/dashboard/CardOwnerSummary';
 
 export default function ActualisationSheet({ month, role }) {
   const [rows, setRows] = useState([]);
@@ -14,6 +15,7 @@ export default function ActualisationSheet({ month, role }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
+  const [q, setQ] = useState('');
 
   async function load() {
     setLoading(true);
@@ -41,18 +43,26 @@ export default function ActualisationSheet({ month, role }) {
 
   function downloadXlsx() {
     import('xlsx').then((XLSX) => {
-      const data = rows.map((r) => ({
+      const data = filteredRows.map((r) => ({
         Month: r.month,
         Student: r.students?.student_name || '',
         STP: r.students?.stp_code || '',
+        Email: r.students?.email || '',
         Country: r.students?.country || '',
         Package: r.students?.package || '',
         'Reference Package Key': r.reference_package_key || '',
         Added: r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '',
         'Sale Amount': r.total_sale_amount ?? '',
+        'Collected': r.collected ?? '',
+        'Last Collection Date': r.last_collection_date || '',
+        'Outstanding': r.outstanding ?? '',
+        'Net After Subvention/GST': r.net_after_charges ?? '',
         'Actualised Cost': r.actualised_cost ?? '',
+        'Servicing Balance': r.servicing_balance ?? '',
+        'Status': r.status || '',
         'Margin %': r.actualised_margin_pct != null ? Number(r.actualised_margin_pct).toFixed(1) : '',
         'Last Service Date': r.last_service_date || '',
+        'Card Owners': Object.entries(r.card_owners || {}).map(([k, v]) => `${k}: Rs ${inr(v)}`).join('; '),
       }));
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -65,16 +75,26 @@ export default function ActualisationSheet({ month, role }) {
   if (loading) return <div>Loading...</div>;
   if (err) return <div className="error-text">{err}</div>;
 
-  const totalSale = rows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
-  const totalCollected = rows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
-  const totalActualised = rows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
+  const needle = q.trim().toLowerCase();
+  const filteredRows = needle
+    ? rows.filter((r) =>
+        (r.students?.stp_code || '').toLowerCase().includes(needle) ||
+        (r.students?.email || '').toLowerCase().includes(needle) ||
+        (r.students?.student_name || '').toLowerCase().includes(needle))
+    : rows;
+
+  const totalSale = filteredRows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
+  const totalCollected = filteredRows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
+  const totalActualised = filteredRows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
+  const totalNetAfterCharges = filteredRows.reduce((s, r) => s + (Number(r.net_after_charges) || 0), 0);
+  const colSpan = role === 'superadmin' ? 17 : 16;
 
   return (
     <>
       <div className="stat-grid">
         <div className="stat">
           <div className="label">Students (this view)</div>
-          <div className="value">{rows.length}</div>
+          <div className="value">{filteredRows.length}</div>
         </div>
         <div className="stat">
           <div className="label">Total sale amount</div>
@@ -83,6 +103,10 @@ export default function ActualisationSheet({ month, role }) {
         <div className="stat">
           <div className="label">Total collected amount</div>
           <div className="value">Rs {inr(totalCollected)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Net after subvention/GST</div>
+          <div className="value">Rs {inr(totalNetAfterCharges)}</div>
         </div>
         <div className="stat">
           <div className="label">Actualised cost so far</div>
@@ -95,15 +119,23 @@ export default function ActualisationSheet({ month, role }) {
       </div>
 
       <div className="card">
-        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <span>Students</span>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by STP code or Leverage email"
+              style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, minWidth: 260 }}
+            />
             <button className="btn" onClick={downloadXlsx}>Download sheet</button>
             {role === 'superadmin' && (
               <button className="btn primary" onClick={() => setShowAdd(true)}>+ Add student</button>
             )}
           </div>
         </div>
+        <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>
             <tr>
@@ -114,15 +146,20 @@ export default function ActualisationSheet({ month, role }) {
               <th>Package</th>
               <th>Added</th>
               <th className="num-cell">Sale amount</th>
-              <th className="num-cell">Actualised cost</th>
+              <th className="num-cell">Collected</th>
+              <th>Last collection date</th>
+              <th className="num-cell">Outstanding</th>
+              <th className="num-cell">Net after charges</th>
+              <th className="num-cell">Servicing balance</th>
+              <th>Status</th>
               <th className="num-cell">Margin %</th>
-              <th>Last service date</th>
+              <th>Card owner</th>
               <th>Activity</th>
               {role === 'superadmin' && <th>Manage</th>}
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {filteredRows.map((r) => {
               const isOpen = expanded === r.id;
               return (
                 <Fragment key={r.id}>
@@ -134,9 +171,20 @@ export default function ActualisationSheet({ month, role }) {
                     <td>{r.students?.package || '-'}{r.reference_package_key ? <span className="tag" style={{ marginLeft: 6 }}>{r.reference_package_key}</span> : null}</td>
                     <td>{r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '-'}</td>
                     <td className="num-cell">Rs {inr(r.total_sale_amount)}</td>
-                    <td className="num-cell">Rs {inr(r.actualised_cost)}</td>
+                    <td className="num-cell">Rs {inr(r.collected)}</td>
+                    <td>{r.last_collection_date ? new Date(r.last_collection_date).toLocaleDateString('en-IN') : '-'}</td>
+                    <td className="num-cell">Rs {inr(r.outstanding)}</td>
+                    <td className="num-cell">Rs {inr(r.net_after_charges)}</td>
+                    <td className="num-cell">Rs {inr(r.servicing_balance)}</td>
+                    <td><span className={`tag ${r.status === 'Closed' ? 'ac' : ''}`}>{r.status}</span></td>
                     <td className="num-cell">{pct(r.actualised_margin_pct)}</td>
-                    <td>{r.last_service_date ? new Date(r.last_service_date).toLocaleDateString('en-IN') : '-'}</td>
+                    <td style={{ fontSize: 12 }}>
+                      {Object.keys(r.card_owners || {}).length
+                        ? Object.entries(r.card_owners).map(([owner, amt]) => (
+                            <div key={owner}>{owner}: Rs {inr(amt)}</div>
+                          ))
+                        : '-'}
+                    </td>
                     <td>
                       <button className="btn" onClick={(e) => { e.stopPropagation(); setHistoryFor({ type: 'mis_record', id: r.id, label: r.students?.student_name }); }}>
                         History
@@ -164,7 +212,7 @@ export default function ActualisationSheet({ month, role }) {
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={role === 'superadmin' ? 12 : 11} style={{ background: 'var(--surface-2)', padding: 0 }}>
+                      <td colSpan={colSpan} style={{ background: 'var(--surface-2)', padding: 0 }}>
                         <ServiceChecklist
                           studentId={r.students?.id}
                           month={r.month}
@@ -177,12 +225,15 @@ export default function ActualisationSheet({ month, role }) {
                 </Fragment>
               );
             })}
-            {!rows.length && (
-              <tr><td colSpan={role === 'superadmin' ? 12 : 11} className="empty-state">No students for this month yet.</td></tr>
+            {!filteredRows.length && (
+              <tr><td colSpan={colSpan} className="empty-state">{needle ? 'No students match that search.' : 'No students for this month yet.'}</td></tr>
             )}
           </tbody>
         </table>
+        </div>
       </div>
+
+      <CardOwnerSummary />
 
       {showAdd && (
         <AddStudentModal onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} />
