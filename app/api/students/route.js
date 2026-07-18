@@ -1,6 +1,6 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getProfile, requireRole, CAN_WRITE, getAccessScope, isAllowedCountry } from '@/utils/roles';
+import { getProfile, requireMisWrite, getAccessScope, isAllowedCountry } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 import { resolvePackageKey } from '@/lib/reference-services';
@@ -140,13 +140,16 @@ export async function GET(request) {
       const key = (r.students?.id) + '|' + r.month;
       const svc = svcByStudentMonth[key];
       const actualisedCost = svc?.total ?? 0;
-      const actualisedMarginPct = r.total_sale_amount
-        ? ((r.total_sale_amount - actualisedCost) / r.total_sale_amount) * 100
+      const netAfterCharges = (Number(r.collected) || 0) - (Number(r.subvention) || 0) - (Number(r.gst) || 0);
+      // Margin is against what actually landed net of subvention/GST, not the
+      // gross sale amount - the full sale amount was never all in hand, so
+      // measuring margin against it overstated how much room there really was.
+      const actualisedMarginPct = netAfterCharges
+        ? ((netAfterCharges - actualisedCost) / netAfterCharges) * 100
         : null;
       const pkgInfo = refByPkg[r.reference_package_key] || { count: 0, total: 0 };
       const servicingBalance = pkgInfo.total - actualisedCost;
       const isClosed = pkgInfo.count > 0 && (svc?.tickedCount || 0) >= pkgInfo.count;
-      const netAfterCharges = (Number(r.collected) || 0) - (Number(r.subvention) || 0) - (Number(r.gst) || 0);
       return Object.assign({}, r, {
         pnl: pnlByStudentMonth[key] || null,
         actualised_cost: actualisedCost,
@@ -172,7 +175,7 @@ export async function POST(request) {
     const supabase = await getSupabaseServer();
     const user = await requireUser(supabase);
     const profile = await getProfile(supabase, user.id);
-    requireRole(profile, CAN_WRITE);
+    requireMisWrite(profile);
 
     const body = await request.json();
     const stp_code = body.stp_code;
@@ -241,7 +244,7 @@ export async function PATCH(request) {
     const supabase = await getSupabaseServer();
     const user = await requireUser(supabase);
     const profile = await getProfile(supabase, user.id);
-    requireRole(profile, CAN_WRITE);
+    requireMisWrite(profile);
 
     const body = await request.json();
     const misRecordId = body.mis_record_id;
@@ -295,7 +298,7 @@ export async function DELETE(request) {
     const supabase = await getSupabaseServer();
     const user = await requireUser(supabase);
     const profile = await getProfile(supabase, user.id);
-    requireRole(profile, CAN_WRITE);
+    requireMisWrite(profile);
 
     const { searchParams } = new URL(request.url);
     const misRecordId = searchParams.get('mis_record_id');
