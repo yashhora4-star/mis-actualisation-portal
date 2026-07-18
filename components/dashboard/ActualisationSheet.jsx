@@ -5,7 +5,6 @@ import { inr, pct } from '@/lib/format';
 import AddStudentModal from '@/components/dashboard/AddStudentModal';
 import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 import ServiceChecklist from '@/components/dashboard/ServiceChecklist';
-import CardOwnerSummary from '@/components/dashboard/CardOwnerSummary';
 
 export default function ActualisationSheet({ month, role }) {
   const [rows, setRows] = useState([]);
@@ -232,8 +231,6 @@ export default function ActualisationSheet({ month, role }) {
         </table>
         </div>
       </div>
-
-      <CardOwnerSummary />
 
       {showAdd && (
         <AddStudentModal onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} />
