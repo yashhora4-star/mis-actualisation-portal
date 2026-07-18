@@ -2,6 +2,30 @@ import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getProfile } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function monthSortKey(label) {
+  const [name, year] = String(label).split(' ');
+  const idx = MONTH_NAMES.indexOf(name);
+  return Number(year) * 12 + (idx === -1 ? 0 : idx);
+}
+
+// The month picker should let you jump to any month in the academic year,
+// not just the ones that already have data uploaded - otherwise April/May/June
+// silently vanish from the dropdown until someone uploads a sheet for them.
+// Starts April 2026 (when this portal's data begins) through March 2027, plus
+// whatever real months already exist in the data in case they fall outside that.
+function buildMonthOptions(existingMonths) {
+  const base = [];
+  for (let i = 0; i < 12; i++) {
+    const monthIndex = (3 + i) % 12; // 3 = April
+    const year = 2026 + Math.floor((3 + i) / 12);
+    base.push(`${MONTH_NAMES[monthIndex]} ${year}`);
+  }
+  const merged = new Set([...base, ...existingMonths]);
+  return [...merged].sort((a, b) => monthSortKey(a) - monthSortKey(b));
+}
+
 export async function GET() {
     try {
           const supabase = await getSupabaseServer();
@@ -13,7 +37,8 @@ export async function GET() {
               supabase.from('mis_records').select('month').order('month'),
             ]);
 
-      const distinctMonths = [...new Set((months || []).map((m) => m.month))];
+      const rawMonths = [...new Set((months || []).map((m) => m.month))];
+      const distinctMonths = buildMonthOptions(rawMonths);
 
       const { data: misRecords } = await supabase
             .from('mis_records')
