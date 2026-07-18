@@ -14,7 +14,7 @@ export async function GET(request) {
 
     let misQuery = supabase
       .from('mis_records')
-      .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, country, package, created_at )')
+      .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, email, country, package, created_at )')
       .order('month', { ascending: false });
     if (month) misQuery = misQuery.eq('month', month);
 
@@ -22,6 +22,7 @@ export async function GET(request) {
     if (misErr) throw misErr;
 
     const studentIds = misRows.map((r) => r.students?.id).filter(Boolean);
+    const misRecordIds = misRows.map((r) => r.id).filter(Boolean);
 
     let pnlRows = [];
     if (studentIds.length) {
@@ -53,11 +54,71 @@ export async function GET(request) {
     for (const s of svcRows || []) {
       if (!s.is_selected) continue;
       const key = s.student_id + '|' + s.month;
-      if (!svcByStudentMonth[key]) svcByStudentMonth[key] = { total: 0, lastDate: null };
+      if (!svcByStudentMonth[key]) svcByStudentMonth[key] = { total: 0, lastDate: null, tickedCount: 0 };
       svcByStudentMonth[key].total += Number(s.actual_cost_inr ?? s.reference_cost_inr ?? 0);
+      svcByStudentMonth[key].tickedCount += 1;
       if (s.service_date && (!svcByStudentMonth[key].lastDate || s.service_date > svcByStudentMonth[key].lastDate)) {
         svcByStudentMonth[key].lastDate = s.service_date;
       }
+    }
+
+    // Total amount that can be used per student for servicing - the sum of
+    // reference_services costs defined for their package - so we can show
+    // what's still left to use (balance) and flag the record "Closed" once
+    // every billable service on the checklist has been ticked.
+    const packageKeys = [...new Set(misRows.map((r) => r.reference_package_key).filter(Boolean))];
+    let refSvcRows = [];
+    if (packageKeys.length) {
+      const { data } = await supabase
+        .from('reference_services')
+        .select('package_key, reference_cost_inr')
+        .in('package_key', packageKeys);
+      refSvcRows = data || [];
+    }
+    const refByPkg = {};
+    for (const s of refSvcRows || []) {
+      if (!refByPkg[s.package_key]) refByPkg[s.package_key] = { count: 0, total: 0 };
+      refByPkg[s.package_key].count += 1;
+      refByPkg[s.package_key].total += Number(s.reference_cost_inr || 0);
+    }
+
+    // Last date any collection landed against this MIS record - pulled from
+    // the individual payment lines parsed off the MIS sheet, not just the
+    // single "collected" total, so a payment against an outstanding balance
+    // shows a date the same way the first collection does.
+    let payRows = [];
+    if (misRecordIds.length) {
+      const { data } = await supabase
+        .from('mis_payment_lines')
+        .select('mis_record_id, pay_date')
+        .in('mis_record_id', misRecordIds)
+        .not('pay_date', 'is', null);
+      payRows = data || [];
+    }
+    const lastPayByMis = {};
+    for (const p of payRows || []) {
+      if (!lastPayByMis[p.mis_record_id] || p.pay_date > lastPayByMis[p.mis_record_id]) {
+        lastPayByMis[p.mis_record_id] = p.pay_date;
+      }
+    }
+
+    // Card-owner spend per student (Tanisha Kalra / Manish Singh etc, keyed
+    // by card_holder + which bank's card it was), from the card statements
+    // already uploaded and matched to a student.
+    let cardRows = [];
+    if (studentIds.length) {
+      const { data } = await supabase
+        .from('card_transactions')
+        .select('student_id, card_holder, source_bank, amount')
+        .in('student_id', studentIds);
+      cardRows = data || [];
+    }
+    const cardByStudent = {};
+    for (const c of cardRows || []) {
+      if (!c.student_id) continue;
+      if (!cardByStudent[c.student_id]) cardByStudent[c.student_id] = {};
+      const ownerKey = `${c.card_holder || 'Unknown'} (${c.source_bank || '-'})`;
+      cardByStudent[c.student_id][ownerKey] = (cardByStudent[c.student_id][ownerKey] || 0) + Number(c.amount || 0);
     }
 
     const rows = misRows.map((r) => {
@@ -67,11 +128,21 @@ export async function GET(request) {
       const actualisedMarginPct = r.total_sale_amount
         ? ((r.total_sale_amount - actualisedCost) / r.total_sale_amount) * 100
         : null;
+      const pkgInfo = refByPkg[r.reference_package_key] || { count: 0, total: 0 };
+      const servicingBalance = pkgInfo.total - actualisedCost;
+      const isClosed = pkgInfo.count > 0 && (svc?.tickedCount || 0) >= pkgInfo.count;
+      const netAfterCharges = (Number(r.collected) || 0) - (Number(r.subvention) || 0) - (Number(r.gst) || 0);
       return Object.assign({}, r, {
         pnl: pnlByStudentMonth[key] || null,
         actualised_cost: actualisedCost,
         actualised_margin_pct: actualisedMarginPct,
         last_service_date: svc?.lastDate || null,
+        servicing_total: pkgInfo.total,
+        servicing_balance: servicingBalance,
+        status: pkgInfo.count > 0 ? (isClosed ? 'Closed' : 'In progress') : '-',
+        net_after_charges: netAfterCharges,
+        last_collection_date: lastPayByMis[r.id] || null,
+        card_owners: cardByStudent[r.students?.id] || {},
       });
     });
 
