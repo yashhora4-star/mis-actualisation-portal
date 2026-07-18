@@ -24,12 +24,13 @@ export async function POST(request) {
 
     const buffer = new Uint8Array(await file.arrayBuffer());
     const parsedRows = parseMISWorkbook(buffer, month);
+    const skippedNoStp = parsedRows.skippedNoStp || 0;
 
     const admin = getSupabaseAdmin();
     const categoryMap = await getCategoryIdMap(admin);
 
     if (!parsedRows.length) {
-      return ok({ inserted: 0 });
+      return ok({ inserted: 0, skippedNoStp });
     }
 
     // 1) Bulk upsert students, keyed by stp_code.
@@ -105,7 +106,7 @@ export async function POST(request) {
       performedBy: user.id, details: { month, file: file.name, rows: parsedRows.length },
     });
 
-    return ok({ inserted: parsedRows.length });
+    return ok({ inserted: parsedRows.length, skippedNoStp });
   } catch (err) {
     return handle(err);
   }
