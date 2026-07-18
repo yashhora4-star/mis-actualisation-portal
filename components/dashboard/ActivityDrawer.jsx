@@ -33,7 +33,9 @@ function describe(entry) {
     case 'updated':
       return d.service_date ? `Date changed to ${fmtDate(d.service_date)}.` : 'Entry updated.';
     case 'overridden':
-      return 'Locked entry was edited by a superadmin.';
+      return d.service_date
+        ? `Locked entry was edited by a superadmin - date set to ${fmtDate(d.service_date)}.`
+        : 'Locked entry was edited by a superadmin.';
     case 'locked':
       return d.locked === false ? 'Unlocked for editing.' : 'Locked against further changes.';
     case 'proof_uploaded': {
@@ -48,11 +50,18 @@ function describe(entry) {
     case 'created':
       return `${d.student_name || 'Student'} added${d.month ? ` for ${d.month}` : ''}${d.source ? ` (${d.source})` : ''}.`;
     case 'edited': {
-      const changed = [
-        ...Object.keys(d.student || {}),
-        ...Object.keys(d.mis || {}),
-      ];
-      return changed.length ? `Changed: ${changed.join(', ')}.` : 'Record details edited.';
+      const parts = [];
+      const studentChanges = Object.keys(d.student || {});
+      const misChanges = Object.keys(d.mis || {});
+      if (studentChanges.length) parts.push(`Student details changed: ${studentChanges.join(', ')}`);
+      if (misChanges.length) parts.push(`MIS record changed: ${misChanges.join(', ')}`);
+      // Outstanding gets called out explicitly with the new value - this is
+      // also the moment outstanding_updated_at is set, so this entry's
+      // timestamp above is the date the new outstanding amount was picked.
+      if (d.mis && d.mis.outstanding !== undefined) {
+        parts.push(d.mis.outstanding == null ? 'Outstanding cleared' : `Outstanding set to Rs ${inr(d.mis.outstanding)}`);
+      }
+      return parts.length ? `${parts.join('. ')}.` : 'Record details edited.';
     }
     case 'deleted':
       return 'Record and its ticked services were removed.';
