@@ -22,11 +22,89 @@ function Field({ label, children }) {
   );
 }
 
+// Records a single incremental payment against a student's outstanding
+// balance - a dated line item (so "last collection date" and history stay
+// accurate), rather than the blunt overwrite-the-numbers Edit modal, which
+// left no trace of when or how much came in.
+function RecordPaymentModal({ row, onClose, onSaved }) {
+  const [amount, setAmount] = useState('');
+  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    setErr('');
+    const amt = Number(amount);
+    if (!amt || amt <= 0) { setErr('Enter a valid amount.'); return; }
+    if (!payDate) { setErr('Pick a payment date.'); return; }
+    setSaving(true);
+    try {
+      await api('/api/students/payments', {
+        method: 'POST',
+        body: { mis_record_id: row.id, amount: amt, pay_date: payDate, note: note.trim() || undefined },
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div className="card" style={{ width: 380, maxWidth: '90vw' }}>
+        <div className="card-title">Record payment</div>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 14 }}>
+          {row.students?.student_name} - {row.students?.stp_code} - {row.month}
+          <br />Currently outstanding: Rs {inr(row.outstanding)}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Amount received
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border-2)', borderRadius: 6, marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Payment date
+            <input
+              type="date"
+              value={payDate}
+              onChange={(e) => setPayDate(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border-2)', borderRadius: 6, marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Note / reference (optional)
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="UTR, cheque no., etc."
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border-2)', borderRadius: 6, marginTop: 4 }}
+            />
+          </label>
+          {err && <div className="error-text">{err}</div>}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+            <button className="btn" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save payment'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Master-detail layout: a simple left-hand list of student names, and a
 // detail panel on the right for whichever student is selected - replacing
 // the old dense, expandable multi-column table which got unwieldy once
 // there were more than a handful of fields per student.
-export default function ActualisationSheet({ month, role }) {
+export default function ActualisationSheet({ month, role, canWrite }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -35,6 +113,7 @@ export default function ActualisationSheet({ month, role }) {
   const [editRow, setEditRow] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
   const [q, setQ] = useState('');
+  const [payingRow, setPayingRow] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -137,7 +216,9 @@ export default function ActualisationSheet({ month, role }) {
         </div>
         <div className="stat">
           <div className="label">Blended margin</div>
-          <div className="value">{totalSale ? pct(((totalSale - totalActualised) / totalSale) * 100) : '-'}</div>
+          {/* Margin against what actually landed net of subvention/GST, not the gross
+              sale amount - matches the per-student Margin % fix below. */}
+          <div className="value">{totalNetAfterCharges ? pct(((totalNetAfterCharges - totalActualised) / totalNetAfterCharges) * 100) : '-'}</div>
         </div>
       </div>
 
@@ -154,7 +235,7 @@ export default function ActualisationSheet({ month, role }) {
               />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn" onClick={downloadXlsx} style={{ flex: 1 }}>Download sheet</button>
-                {role === 'superadmin' && (
+                {canWrite && (
                   <button className="btn primary" onClick={() => setShowAdd(true)} style={{ flex: 1 }}>+ Add</button>
                 )}
               </div>
@@ -208,8 +289,9 @@ export default function ActualisationSheet({ month, role }) {
                     <button className="btn" onClick={() => setHistoryFor({ type: 'mis_record', id: selected.id, label: selected.students?.student_name })}>
                       History
                     </button>
-                    {role === 'superadmin' && (
+                    {canWrite && (
                       <>
+                        <button className="btn primary" onClick={() => setPayingRow(selected)}>Record payment</button>
                         <button className="btn" onClick={() => setEditRow({
                           mis_record_id: selected.id,
                           stp_code: selected.students?.stp_code,
@@ -269,6 +351,13 @@ export default function ActualisationSheet({ month, role }) {
       )}
       {historyFor && (
         <ActivityDrawer target={historyFor} onClose={() => setHistoryFor(null)} />
+      )}
+      {payingRow && (
+        <RecordPaymentModal
+          row={payingRow}
+          onClose={() => setPayingRow(null)}
+          onSaved={() => { setPayingRow(null); load(); }}
+        />
       )}
     </>
   );
