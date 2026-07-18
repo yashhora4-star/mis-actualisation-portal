@@ -15,7 +15,7 @@ export default function TeamPanel() {
     const [inviting, setInviting] = useState(false);
     // Which user's access editor is expanded
     const [editingId, setEditingId] = useState(null);
-    const [draft, setDraft] = useState({ sees_all_students: false, countries: [] });
+    const [draft, setDraft] = useState({ sees_all_students: false, is_mis_poc: false, countries: [] });
     const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -58,7 +58,7 @@ export default function TeamPanel() {
 
   function openAccessEditor(u) {
         setEditingId(u.id);
-        setDraft({ sees_all_students: !!u.sees_all_students, countries: u.countries || [] });
+        setDraft({ sees_all_students: !!u.sees_all_students, is_mis_poc: !!u.is_mis_poc, countries: u.countries || [] });
   }
 
   function toggleDraftCountry(country) {
@@ -79,6 +79,7 @@ export default function TeamPanel() {
                         body: {
                                 id: u.id,
                                 sees_all_students: draft.sees_all_students,
+                                is_mis_poc: draft.is_mis_poc,
                                 // If they're the Accounts POC, country scoping is moot - clear it
                                 // so the intent stays unambiguous in the DB.
                                 countries: draft.sees_all_students ? [] : draft.countries,
@@ -95,9 +96,10 @@ export default function TeamPanel() {
 
   function accessSummary(u) {
         if (u.role === 'superadmin') return 'All students (superadmin)';
-        if (u.sees_all_students) return 'All students (Accounts POC)';
-        if (u.countries && u.countries.length) return u.countries.join(', ');
-        return 'No country assigned yet';
+        const scope = u.sees_all_students ? 'All students (Accounts POC)'
+          : (u.countries && u.countries.length) ? u.countries.join(', ')
+          : 'No country assigned yet';
+        return u.is_mis_poc ? `${scope} - MIS POC` : scope;
   }
 
   return (
@@ -126,15 +128,15 @@ export default function TeamPanel() {
                                     <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Student access</th><th></th></tr></thead>
                                     <tbody>
                                       {users.map((u) => (
-                            <Fragment key={u.id}>
-                            <tr>
+                          <Fragment key={u.id}>
+                          <tr>
                                             <td>{u.name || '-'}</td>
                                             <td>{u.email}</td>
                                             <td><span className="tag">{u.role}</span></td>
                                             <td><span className={`tag ${u.active ? '' : 'unmarked'}`}>{u.active ? 'Active' : 'Deactivated'}</span></td>
                                             <td style={{ fontSize: 13 }}>{accessSummary(u)}</td>
                                             <td style={{ display: 'flex', gap: 8 }}>
-                                             {u.role !== 'superadmin' && (
+                                              {u.role !== 'superadmin' && (
                                                 <>
                                                   <button className="btn" onClick={() => (editingId === u.id ? setEditingId(null) : openAccessEditor(u))}>
                                                     {editingId === u.id ? 'Close' : 'Set access'}
@@ -158,6 +160,14 @@ export default function TeamPanel() {
                                     />
                                     Accounts POC - sees and can act on every student, in every country
                                   </label>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={draft.is_mis_poc}
+                                      onChange={(e) => setDraft((d) => ({ ...d, is_mis_poc: e.target.checked }))}
+                                    />
+                                    MIS POC - can add/edit/delete students and record payments (servicing-only members can only tick services)
+                                  </label>
                                   {!draft.sees_all_students && (
                                     <div>
                                       <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
@@ -176,7 +186,7 @@ export default function TeamPanel() {
                                         ))}
                                       </div>
                                     </div>
-                                  )}
+                                  ) }
                                   <div>
                                     <button className="btn primary" onClick={() => saveAccess(u)} disabled={saving}>
                                       {saving ? 'Saving...' : 'Save access'}
