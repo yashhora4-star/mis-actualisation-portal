@@ -66,6 +66,7 @@ export default function ActualisationSheet({ month, role }) {
   if (err) return <div className="error-text">{err}</div>;
 
   const totalSale = rows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
+  const totalCollected = rows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
   const totalActualised = rows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
 
   return (
@@ -78,6 +79,10 @@ export default function ActualisationSheet({ month, role }) {
         <div className="stat">
           <div className="label">Total sale amount</div>
           <div className="value">Rs {inr(totalSale)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Total collected amount</div>
+          <div className="value">Rs {inr(totalCollected)}</div>
         </div>
         <div className="stat">
           <div className="label">Actualised cost so far</div>
