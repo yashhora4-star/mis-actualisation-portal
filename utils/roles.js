@@ -12,7 +12,7 @@ export const CAN_OVERRIDE_LOCK = new Set(['superadmin']);
 
 export async function getProfile(supabase, userId) {
   const { data, error } = await supabase
-    .from('users').select('id, role, name, active, sees_all_students').eq('id', userId).single();
+    .from('users').select('id, role, name, active, sees_all_students, is_mis_poc').eq('id', userId).single();
   if (error || !data) return null;
   return data;
 }
@@ -25,19 +25,30 @@ export function requireRole(profile, allowedSet) {
   }
 }
 
-// Country-based access scope for POC members. Superadmins and anyone flagged
-// sees_all_students (the Accounts POC) see every student on the portal;
-// everyone else is limited to the countries explicitly assigned to them in
-// Team access, and sees nothing if none are assigned yet.
+// Two independent things determine what a member can do:
+// - servicing: every active member can tick services on the checklist (no flag needed)
+// - MIS write access: adding/editing/deleting students, editing sale/collected/outstanding,
+//   and recording payments - superadmin always has this, and a member can be flagged as
+//   an "MIS POC" to get it too, without being handed the superadmin-only stuff
+//   (sheet upload, team management).
+export function canWriteMis(profile) {
+  return !!profile && !!profile.active && (profile.role === 'superadmin' || !!profile.is_mis_poc);
+}
+
+export function requireMisWrite(profile) {
+  if (!canWriteMis(profile)) {
+    const e = new Error('Not authorized for this action');
+    e.status = 403;
+    throw e;
+  }
+}
+
 export async function getAccessScope(supabase, profile) {
   if (!profile) return { allCountries: false, countries: [] };
   if (profile.role === 'superadmin' || profile.sees_all_students) {
     return { allCountries: true, countries: [] };
   }
-  const { data } = await supabase
-    .from('user_country_access')
-    .select('country')
-    .eq('user_id', profile.id);
+  const { data } = await supabase.from('user_country_access').select('country').eq('user_id', profile.id);
   return { allCountries: false, countries: (data || []).map((r) => r.country) };
 }
 
