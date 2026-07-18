@@ -19,7 +19,7 @@ function UploadBlock({ title, endpoint, needsMonth, onDone }) {
                 form.append('file', file);
                 if (needsMonth) form.append('month', month);
                 const res = await api(endpoint, { method: 'POST', form });
-                setStatus(`Done - ${res.inserted} row(s) imported${res.unmatchedToStudent ? `, ${res.unmatchedToStudent} unmatched to a student` : ''}.`);
+                setStatus(`Done - ${res.inserted} row(s) imported${res.skippedNoStp ? `, ${res.skippedNoStp} skipped (missing STP code)` : ''}${res.unmatchedToStudent ? `, ${res.unmatchedToStudent} unmatched to a student` : ''}.`);
                 onDone && onDone();
         } catch (e) {
                 setStatus(`Error: ${e.message}`);
