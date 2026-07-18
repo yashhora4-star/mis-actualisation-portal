@@ -19,6 +19,7 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
     total_sale_amount: student?.total_sale_amount ?? '',
     collected: student?.collected ?? '',
     outstanding: student?.outstanding ?? '',
+    net_amount_after_deduction: student?.net_amount_after_deduction ?? '',
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -60,6 +61,7 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             total_sale_amount: form.total_sale_amount ? Number(form.total_sale_amount) : null,
             collected: form.collected ? Number(form.collected) : null,
             outstanding: form.outstanding ? Number(form.outstanding) : null,
+            net_amount_after_deduction: form.net_amount_after_deduction ? Number(form.net_amount_after_deduction) : null,
           },
         });
       } else {
@@ -70,6 +72,7 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             total_sale_amount: form.total_sale_amount ? Number(form.total_sale_amount) : null,
             collected: form.collected ? Number(form.collected) : null,
             outstanding: form.outstanding ? Number(form.outstanding) : null,
+            net_amount_after_deduction: form.net_amount_after_deduction ? Number(form.net_amount_after_deduction) : null,
           },
         });
       }
@@ -119,6 +122,14 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
           <div className="field"><label>Total sale amount</label><input value={form.total_sale_amount} onChange={(e) => setAndRecalcOutstanding('total_sale_amount', e.target.value)} /></div>
           <div className="field"><label>Collected</label><input value={form.collected} onChange={(e) => setAndRecalcOutstanding('collected', e.target.value)} /></div>
           <div className="field"><label>Outstanding</label><input value={form.outstanding} onChange={(e) => set('outstanding', e.target.value)} /></div>
+          <div className="field">
+            <label>Net amount after deduction</label>
+            <input
+              value={form.net_amount_after_deduction}
+              onChange={(e) => set('net_amount_after_deduction', e.target.value)}
+              placeholder="Amount collected after bank/gateway deduction"
+            />
+          </div>
         </div>
         {err && <div className="error-text">{err}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
