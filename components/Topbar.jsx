@@ -5,6 +5,7 @@ import { getSupabaseBrowser } from '@/lib/supabase/client';
 
 const TITLES = {
       sheet: 'Actualisation sheet',
+      cardowners: 'Card owner summary',
       upload: 'Upload monthly sheets',
       team: 'Team access',
 };
