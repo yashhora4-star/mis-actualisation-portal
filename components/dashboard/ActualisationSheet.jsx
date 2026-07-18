@@ -7,127 +7,187 @@ import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 import ServiceChecklist from '@/components/dashboard/ServiceChecklist';
 
 export default function ActualisationSheet({ month, role }) {
-    const [rows, setRows] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState('');
-    const [expanded, setExpanded] = useState(null);
-    const [showAdd, setShowAdd] = useState(false);
-    const [historyFor, setHistoryFor] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [expanded, setExpanded] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editRow, setEditRow] = useState(null);
+  const [historyFor, setHistoryFor] = useState(null);
 
   async function load() {
-        setLoading(true);
-        try {
-                const res = await api(`/api/students${month ? `?month=${encodeURIComponent(month)}` : ''}`);
-                setRows(res.rows || []);
-        } catch (e) {
-                setErr(e.message);
-        } finally {
-                setLoading(false);
-        }
+    setLoading(true);
+    try {
+      const res = await api(`/api/students${month ? `?month=${encodeURIComponent(month)}` : ''}`);
+      setRows(res.rows || []);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, [month]);
 
+  async function deleteRow(r) {
+    if (!window.confirm(`Delete ${r.students?.student_name} - ${r.month}? This removes their MIS record, P&L record, and ticked services for this month.`)) return;
+    try {
+      await api(`/api/students?mis_record_id=${r.id}`, { method: 'DELETE' });
+      load();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  function downloadXlsx() {
+    import('xlsx').then((XLSX) => {
+      const data = rows.map((r) => ({
+        Month: r.month,
+        Student: r.students?.student_name || '',
+        STP: r.students?.stp_code || '',
+        Country: r.students?.country || '',
+        Package: r.students?.package || '',
+        'Reference Package Key': r.reference_package_key || '',
+        Added: r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '',
+        'Sale Amount': r.total_sale_amount ?? '',
+        'Actualised Cost': r.actualised_cost ?? '',
+        'Margin %': r.actualised_margin_pct != null ? Number(r.actualised_margin_pct).toFixed(1) : '',
+        'Last Service Date': r.last_service_date || '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Actualisation');
+      const label = month ? month.replace(/\s+/g, '_') : 'all_months';
+      XLSX.writeFile(wb, `actualisation_${label}.xlsx`);
+    });
+  }
+
   if (loading) return <div>Loading...</div>;
-    if (err) return <div className="error-text">{err}</div>;
-  
-    const totalSale = rows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
-    const totalActualised = rows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
-  
-    return (
-          <>
-                <div className="stat-grid">
-                        <div className="stat">
-                                  <div className="label">Students (this view)</div>
-                                  <div className="value">{rows.length}</div>
+  if (err) return <div className="error-text">{err}</div>;
+
+  const totalSale = rows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
+  const totalActualised = rows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
+
+  return (
+    <>
+      <div className="stat-grid">
+        <div className="stat">
+          <div className="label">Students (this view)</div>
+          <div className="value">{rows.length}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Total sale amount</div>
+          <div className="value">Rs {inr(totalSale)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Actualised cost so far</div>
+          <div className="value">Rs {inr(totalActualised)}</div>
+        </div>
+        <div className="stat">
+          <div className="label">Blended margin</div>
+          <div className="value">{totalSale ? pct(((totalSale - totalActualised) / totalSale) * 100) : '-'}</div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Students</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={downloadXlsx}>Download sheet</button>
+            {role === 'superadmin' && (
+              <button className="btn primary" onClick={() => setShowAdd(true)}>+ Add student</button>
+            )}
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Month</th>
+              <th>Student</th>
+              <th>STP</th>
+              <th>Package</th>
+              <th>Added</th>
+              <th className="num-cell">Sale amount</th>
+              <th className="num-cell">Actualised cost</th>
+              <th className="num-cell">Margin %</th>
+              <th>Last service date</th>
+              <th>Activity</th>
+              {role === 'superadmin' && <th>Manage</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const isOpen = expanded === r.id;
+              return (
+                <Fragment key={r.id}>
+                  <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : r.id)}>
+                    <td>{isOpen ? 'v' : '>'}</td>
+                    <td>{r.month}</td>
+                    <td>{r.students?.student_name}</td>
+                    <td className="tag">{r.students?.stp_code}</td>
+                    <td>{r.students?.package || '-'}{r.reference_package_key ? <span className="tag" style={{ marginLeft: 6 }}>{r.reference_package_key}</span> : null}</td>
+                    <td>{r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '-'}</td>
+                    <td className="num-cell">Rs {inr(r.total_sale_amount)}</td>
+                    <td className="num-cell">Rs {inr(r.actualised_cost)}</td>
+                    <td className="num-cell">{pct(r.actualised_margin_pct)}</td>
+                    <td>{r.last_service_date ? new Date(r.last_service_date).toLocaleDateString('en-IN') : '-'}</td>
+                    <td>
+                      <button className="btn" onClick={(e) => { e.stopPropagation(); setHistoryFor({ type: 'mis_record', id: r.id, label: r.students?.student_name }); }}>
+                        History
+                      </button>
+                    </td>
+                    {role === 'superadmin' && (
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                          <button className="btn" onClick={() => setEditRow({
+                            mis_record_id: r.id,
+                            stp_code: r.students?.stp_code,
+                            student_name: r.students?.student_name,
+                            email: r.students?.email,
+                            country: r.students?.country,
+                            package: r.students?.package,
+                            month: r.month,
+                            total_sale_amount: r.total_sale_amount,
+                            collected: r.collected,
+                            outstanding: r.outstanding,
+                          })}>Edit</button>
+                          <button className="btn" style={{ color: 'var(--red)' }} onClick={() => deleteRow(r)}>Delete</button>
                         </div>
-                        <div className="stat">
-                                  <div className="label">Total sale amount</div>
-                                  <div className="value">Rs {inr(totalSale)}</div>
-                        </div>
-                        <div className="stat">
-                                  <div className="label">Actualised cost so far</div>
-                                  <div className="value">Rs {inr(totalActualised)}</div>
-                        </div>
-                        <div className="stat">
-                                  <div className="label">Blended margin</div>
-                                  <div className="value">{totalSale ? pct(((totalSale - totalActualised) / totalSale) * 100) : '-'}</div>
-                        </div>
-                </div>
-          
-                <div className="card">
-                        <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>Students</span>
-                          {role === 'superadmin' && (
-                        <button className="btn primary" onClick={() => setShowAdd(true)}>+ Add student</button>
-                                  )}
-                        </div>
-                        <table>
-                                  <thead>
-                                              <tr>
-                                                            <th></th>
-                                                            <th>Month</th>
-                                                            <th>Student</th>
-                                                            <th>STP</th>
-                                                            <th>Package</th>
-                                                            <th>Added</th>
-                                                            <th className="num-cell">Sale amount</th>
-                                                            <th className="num-cell">Actualised cost</th>
-                                                            <th className="num-cell">Margin %</th>
-                                                            <th>Last service date</th>
-                                                            <th>Activity</th>
-                                              </tr>
-                                  </thead>
-                                  <tbody>
-                                    {rows.map((r) => {
-                          const isOpen = expanded === r.id;
-                          return (
-                                            <Fragment key={r.id}>
-                                                              <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : r.id)}>
-                                                                                  <td>{isOpen ? 'v' : '>'}</td>
-                                                                                  <td>{r.month}</td>
-                                                                                  <td>{r.students?.student_name}</td>
-                                                                                  <td className="tag">{r.students?.stp_code}</td>
-                                                                                  <td>{r.students?.package || '-'}{r.reference_package_key ? <span className="tag" style={{ marginLeft: 6 }}>{r.reference_package_key}</span> : null}</td>
-                                                                                  <td>{r.students?.created_at ? new Date(r.students.created_at).toLocaleDateString('en-IN') : '-'}</td>
-                                                                                  <td className="num-cell">Rs {inr(r.total_sale_amount)}</td>
-                                                                                  <td className="num-cell">Rs {inr(r.actualised_cost)}</td>
-                                                                                  <td className="num-cell">{pct(r.actualised_margin_pct)}</td>
-                                                                                  <td>{r.last_service_date ? new Date(r.last_service_date).toLocaleDateString('en-IN') : '-'}</td>
-                                                                                  <td>
-                                                                                                        <button className="btn" onClick={(e) => { e.stopPropagation(); setHistoryFor({ type: 'mis_record', id: r.id, label: r.students?.student_name }); }}>
-                                                                                                                                History
-                                                                                                          </button>
-                                                                                    </td>
-                                                              </tr>
-                                              {isOpen && (
-                                                                  <tr>
-                                                                                        <td colSpan={11} style={{ background: 'var(--surface-2)', padding: 0 }}>
-                                                                                                                <ServiceChecklist
-                                                                                                                                            studentId={r.students?.id}
-                                                                                                                                            month={r.month}
-                                                                                                                                            role={role}
-                                                                                                                                            onChanged={load}
-                                                                                                                                          />
-                                                                                          </td>
-                                                                  </tr>
-                                                              )}
-                                            </Fragment>
-                                          );
-          })}
-                                    {!rows.length && (
-                          <tr><td colSpan={11} className="empty-state">No students for this month yet.</td></tr>
-                                              )}
-                                  </tbody>
-                        </table>
-                </div>
-          
-            {showAdd && (
-                    <AddStudentModal onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} />
+                      </td>
+                    )}
+                  </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={role === 'superadmin' ? 12 : 11} style={{ background: 'var(--surface-2)', padding: 0 }}>
+                        <ServiceChecklist
+                          studentId={r.students?.id}
+                          month={r.month}
+                          role={role}
+                          onChanged={load}
+                        />
+                      </td>
+                    </tr>
                   )}
-            {historyFor && (
-                    <ActivityDrawer target={historyFor} onClose={() => setHistoryFor(null)} />
-                  )}
-          </>
-        );
+                </Fragment>
+              );
+            })}
+            {!rows.length && (
+              <tr><td colSpan={role === 'superadmin' ? 12 : 11} className="empty-state">No students for this month yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showAdd && (
+        <AddStudentModal onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} />
+      )}
+      {editRow && (
+        <AddStudentModal student={editRow} onClose={() => setEditRow(null)} onAdded={() => { setEditRow(null); load(); }} />
+      )}
+      {historyFor && (
+        <ActivityDrawer target={historyFor} onClose={() => setHistoryFor(null)} />
+      )}
+    </>
+  );
 }
