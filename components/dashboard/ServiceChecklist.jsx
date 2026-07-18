@@ -4,6 +4,8 @@ import { api } from '@/services/api';
 import { inr } from '@/lib/format';
 import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 
+const CARD_OWNERS = ['Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)'];
+
 export default function ServiceChecklist({ studentId, month, role, onChanged }) {
   const [checklist, setChecklist] = useState([]);
   const [packageKey, setPackageKey] = useState(null);
@@ -54,11 +56,16 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
       setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
         ? { ...c, id: res.tick.id, is_selected: res.tick.is_selected, service_date: res.tick.service_date, locked: res.tick.locked }
         : c));
-      // Once a service gets ticked on, prompt for the UTR + payment proof
-      // for it. Skippable - we don't want to block the workflow if the
-      // details aren't on hand yet, they can add it later from this row.
+      // Once a service gets ticked on, require the UTR + payment mode + proof
+      // for it before it counts as done - Cancel below reverts the tick rather
+      // than leaving it half-finished.
       if (checked) {
-        setProofFor({ id: res.tick.id, service_name: item.service_name });
+        setProofFor({
+          id: res.tick.id,
+          reference_service_id: refId,
+          service_name: item.service_name,
+          reference_cost_inr: item.reference_cost_inr,
+        });
       }
     } catch (e) {
       setErr(e.message);
@@ -100,6 +107,11 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
     }
   }
 
+  async function cancelTick(refId) {
+    const current = checklist.find((c) => c.reference_service_id === refId);
+    if (current) await toggle(current, false);
+  }
+
   if (loading) return <div style={{ padding: 16 }}>Loading checklist...</div>;
   if (!packageKey) {
     return (
@@ -115,7 +127,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
       <table>
         <thead>
           <tr>
-            <th></th><th>Service</th><th>Type</th><th className="num-cell">Reference cost</th><th>Date</th><th>Notes</th><th>Locked</th><th>UTR / proof</th><th>History</th>
+            <th></th><th>Service</th><th>Type</th><th className="num-cell">Reference cost</th><th>Date</th><th>Notes</th><th>Locked</th><th>Payment</th><th>History</th>
           </tr>
         </thead>
         <tbody>
@@ -157,11 +169,26 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                 {item.id ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
                     {item.utr && <span style={{ fontFamily: 'var(--mono)' }}>{item.utr}</span>}
+                    {item.payment_mode && (
+                      <span style={{ color: 'var(--muted)' }}>
+                        {item.payment_mode === 'card' ? `Card - ${item.card_owner || ''}` : 'Bank transfer'}
+                      </span>
+                    )}
+                    {item.actual_cost_inr != null && <span>Net: Rs {inr(item.actual_cost_inr)}</span>}
                     {item.proof_file_url && (
                       <a href={item.proof_file_url} target="_blank" rel="noreferrer">View proof</a>
                     )}
-                    <button className="btn" onClick={() => setProofFor({ id: item.id, service_name: item.service_name, utr: item.utr })}>
-                      {item.utr || item.proof_file_url ? 'Update' : 'Add UTR / proof'}
+                    <button className="btn" onClick={() => setProofFor({
+                      id: item.id,
+                      reference_service_id: item.reference_service_id,
+                      service_name: item.service_name,
+                      utr: item.utr,
+                      payment_mode: item.payment_mode,
+                      card_owner: item.card_owner,
+                      actual_cost_inr: item.actual_cost_inr,
+                      reference_cost_inr: item.reference_cost_inr,
+                    })}>
+                      {item.utr || item.proof_file_url ? 'Update' : 'Add payment details'}
                     </button>
                   </div>
                 ) : '-'}
@@ -180,6 +207,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
         <ProofModal
           target={proofFor}
           onClose={() => setProofFor(null)}
+          onCancelTick={() => cancelTick(proofFor.reference_service_id)}
           onSaved={() => { setProofFor(null); load(true); }}
         />
       )}
@@ -190,11 +218,19 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
   );
 }
 
-function ProofModal({ target, onClose, onSaved }) {
+function ProofModal({ target, onClose, onCancelTick, onSaved }) {
   const [utr, setUtr] = useState(target.utr || '');
   const [file, setFile] = useState(null);
+  const [paymentMode, setPaymentMode] = useState(target.payment_mode || '');
+  const [cardOwner, setCardOwner] = useState(target.card_owner || '');
+  const [actualCost, setActualCost] = useState(
+    target.actual_cost_inr != null ? String(target.actual_cost_inr)
+      : target.reference_cost_inr != null ? String(target.reference_cost_inr) : ''
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  const canSave = utr.trim() && file && paymentMode && (paymentMode !== 'card' || cardOwner);
 
   async function save() {
     setBusy(true);
@@ -202,8 +238,11 @@ function ProofModal({ target, onClose, onSaved }) {
     try {
       const form = new FormData();
       form.append('student_service_id', target.id);
-      if (utr) form.append('utr', utr);
-      if (file) form.append('file', file);
+      form.append('utr', utr.trim());
+      form.append('file', file);
+      form.append('payment_mode', paymentMode);
+      if (paymentMode === 'card') form.append('card_owner', cardOwner);
+      if (actualCost !== '') form.append('actual_cost_inr', actualCost);
       await api('/api/student-services/proof', { method: 'POST', form });
       onSaved();
     } catch (e) {
@@ -213,15 +252,28 @@ function ProofModal({ target, onClose, onSaved }) {
     }
   }
 
+  async function cancel() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onCancelTick();
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+      setBusy(false);
+    }
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
-      <div style={{ width: 380, background: 'var(--surface)', borderRadius: 8, padding: 20 }}>
+      <div style={{ width: 420, background: 'var(--surface)', borderRadius: 8, padding: 20 }}>
         <div className="card-title">Payment details - {target.service_name}</div>
         <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: -8, marginBottom: 12 }}>
-          Add the UTR for this service and upload proof of payment. Saved to a shared folder - anyone with the link can view it, and it's re-openable from this row.
+          UTR, payment mode, and proof of payment are all required before this service counts as done. Cancel reverses the tick if the details aren't on hand yet.
         </p>
         {err && <div className="error-text" style={{ marginBottom: 8 }}>{err}</div>}
-        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>UTR</label>
+
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>UTR *</label>
         <input
           type="text"
           value={utr}
@@ -229,11 +281,47 @@ function ProofModal({ target, onClose, onSaved }) {
           placeholder="UTR / transaction reference"
           style={{ width: '100%', marginBottom: 12, padding: '6px 8px', border: '1px solid var(--border-2)', borderRadius: 4 }}
         />
-        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Proof of payment</label>
+
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Net amount after deduction</label>
+        <input
+          type="number"
+          value={actualCost}
+          onChange={(e) => setActualCost(e.target.value)}
+          placeholder="Actual amount paid, after charges"
+          style={{ width: '100%', marginBottom: 12, padding: '6px 8px', border: '1px solid var(--border-2)', borderRadius: 4 }}
+        />
+
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Payment mode *</label>
+        <select
+          value={paymentMode}
+          onChange={(e) => { setPaymentMode(e.target.value); if (e.target.value !== 'card') setCardOwner(''); }}
+          style={{ width: '100%', marginBottom: 12, padding: '6px 8px', border: '1px solid var(--border-2)', borderRadius: 4 }}
+        >
+          <option value="">Select...</option>
+          <option value="card">Card</option>
+          <option value="bank_transfer">Bank transfer</option>
+        </select>
+
+        {paymentMode === 'card' && (
+          <>
+            <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Which card *</label>
+            <select
+              value={cardOwner}
+              onChange={(e) => setCardOwner(e.target.value)}
+              style={{ width: '100%', marginBottom: 12, padding: '6px 8px', border: '1px solid var(--border-2)', borderRadius: 4 }}
+            >
+              <option value="">Select...</option>
+              {CARD_OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </>
+        )}
+
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Proof of payment *</label>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 16 }} />
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn" onClick={onClose} disabled={busy}>Skip for now</button>
-          <button className="btn primary" onClick={save} disabled={busy || (!utr && !file)}>{busy ? 'Saving...' : 'Save'}</button>
+          <button className="btn" onClick={cancel} disabled={busy}>Cancel</button>
+          <button className="btn primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
     </div>
