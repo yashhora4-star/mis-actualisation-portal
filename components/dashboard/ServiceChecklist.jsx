@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/services/api';
 import { inr } from '@/lib/format';
+import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 
 export default function ServiceChecklist({ studentId, month, role, onChanged }) {
   const [checklist, setChecklist] = useState([]);
@@ -9,6 +10,8 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [savingId, setSavingId] = useState(null);
+  const [proofFor, setProofFor] = useState(null);
+  const [historyFor, setHistoryFor] = useState(null);
 
   async function load(silent) {
     if (!silent) setLoading(true);
@@ -51,6 +54,12 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
       setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
         ? { ...c, id: res.tick.id, is_selected: res.tick.is_selected, service_date: res.tick.service_date, locked: res.tick.locked }
         : c));
+      // Once a service gets ticked on, prompt for the UTR + payment proof
+      // for it. Skippable - we don't want to block the workflow if the
+      // details aren't on hand yet, they can add it later from this row.
+      if (checked) {
+        setProofFor({ id: res.tick.id, service_name: item.service_name });
+      }
     } catch (e) {
       setErr(e.message);
       load(true);
@@ -106,7 +115,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
       <table>
         <thead>
           <tr>
-            <th></th><th>Service</th><th>Type</th><th className="num-cell">Reference cost</th><th>Date</th><th>Notes</th><th>Locked</th>
+            <th></th><th>Service</th><th>Type</th><th className="num-cell">Reference cost</th><th>Date</th><th>Notes</th><th>Locked</th><th>UTR / proof</th><th>History</th>
           </tr>
         </thead>
         <tbody>
@@ -144,10 +153,89 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                   )
                 ) : '-'}
               </td>
+              <td style={{ fontSize: 12 }}>
+                {item.id ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+                    {item.utr && <span style={{ fontFamily: 'var(--mono)' }}>{item.utr}</span>}
+                    {item.proof_file_url && (
+                      <a href={item.proof_file_url} target="_blank" rel="noreferrer">View proof</a>
+                    )}
+                    <button className="btn" onClick={() => setProofFor({ id: item.id, service_name: item.service_name, utr: item.utr })}>
+                      {item.utr || item.proof_file_url ? 'Update' : 'Add UTR / proof'}
+                    </button>
+                  </div>
+                ) : '-'}
+              </td>
+              <td>
+                {item.id ? (
+                  <button className="btn" onClick={() => setHistoryFor({ type: 'student_service', id: item.id, label: item.service_name })}>History</button>
+                ) : '-'}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {proofFor && (
+        <ProofModal
+          target={proofFor}
+          onClose={() => setProofFor(null)}
+          onSaved={() => { setProofFor(null); load(true); }}
+        />
+      )}
+      {historyFor && (
+        <ActivityDrawer target={historyFor} onClose={() => setHistoryFor(null)} />
+      )}
+    </div>
+  );
+}
+
+function ProofModal({ target, onClose, onSaved }) {
+  const [utr, setUtr] = useState(target.utr || '');
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function save() {
+    setBusy(true);
+    setErr('');
+    try {
+      const form = new FormData();
+      form.append('student_service_id', target.id);
+      if (utr) form.append('utr', utr);
+      if (file) form.append('file', file);
+      await api('/api/student-services/proof', { method: 'POST', form });
+      onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+      <div style={{ width: 380, background: 'var(--surface)', borderRadius: 8, padding: 20 }}>
+        <div className="card-title">Payment details - {target.service_name}</div>
+        <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: -8, marginBottom: 12 }}>
+          Add the UTR for this service and upload proof of payment. Saved to a shared folder - anyone with the link can view it, and it's re-openable from this row.
+        </p>
+        {err && <div className="error-text" style={{ marginBottom: 8 }}>{err}</div>}
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>UTR</label>
+        <input
+          type="text"
+          value={utr}
+          onChange={(e) => setUtr(e.target.value)}
+          placeholder="UTR / transaction reference"
+          style={{ width: '100%', marginBottom: 12, padding: '6px 8px', border: '1px solid var(--border-2)', borderRadius: 4 }}
+        />
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Proof of payment</label>
+        <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 16 }} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn" onClick={onClose} disabled={busy}>Skip for now</button>
+          <button className="btn primary" onClick={save} disabled={busy || (!utr && !file)}>{busy ? 'Saving...' : 'Save'}</button>
+        </div>
+      </div>
     </div>
   );
 }
