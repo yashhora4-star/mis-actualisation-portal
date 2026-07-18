@@ -57,6 +57,10 @@ export async function GET(request) {
                         locked: tick?.locked || false,
                         selected_by: tick?.selected_by || null,
                         selected_at: tick?.selected_at || null,
+                        utr: tick?.utr || null,
+                        proof_file_url: tick?.proof_file_url || null,
+                        proof_file_name: tick?.proof_file_name || null,
+                        proof_uploaded_at: tick?.proof_uploaded_at || null,
               };
       });
 
