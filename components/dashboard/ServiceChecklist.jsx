@@ -107,9 +107,17 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
     }
   }
 
+  // Cancel (in the payment details modal) only reverses a tick that this
+  // account is actually allowed to undo - once locked, only a superadmin can
+  // untick it. This closes the loophole where opening "Update" on an already
+  // locked, fully-processed entry and hitting Cancel would silently untick it.
   async function cancelTick(refId) {
     const current = checklist.find((c) => c.reference_service_id === refId);
-    if (current) await toggle(current, false);
+    if (!current) return;
+    if (current.locked && role !== 'superadmin') {
+      throw new Error('This entry is locked - ask the superadmin to change it before it can be unticked.');
+    }
+    await toggle(current, false);
   }
 
   if (loading) return <div style={{ padding: 16 }}>Loading checklist...</div>;
