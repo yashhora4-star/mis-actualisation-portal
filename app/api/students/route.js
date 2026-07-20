@@ -5,6 +5,27 @@ import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 import { resolvePackageKey } from '@/lib/reference-services';
 
+// Postgres/PostgREST rejects a single request once an `.in(column, ids)`
+// list gets long enough - as the dataset grew past a few thousand
+// mis_records, the plain single-shot queries below started failing outright
+// with a generic "Bad Request" (no useful detail, just the whole page
+// breaking). `makeQuery` must return a *fresh*, not-yet-filtered query
+// builder each call, since a Supabase query builder can only be used once -
+// chunking re-uses the same base query shape across several smaller requests
+// run in parallel instead of one giant one.
+const IN_CHUNK_SIZE = 150;
+async function fetchInChunks(makeQuery, column, ids, chunkSize = IN_CHUNK_SIZE) {
+  if (!ids.length) return [];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+  const results = await Promise.all(chunks.map(async (chunk) => {
+    const { data, error } = await makeQuery().in(column, chunk);
+    if (error) throw error;
+    return data || [];
+  }));
+  return results.flat();
+}
+
 export async function GET(request) {
   try {
     const supabase = await getSupabaseServer();
@@ -35,14 +56,15 @@ export async function GET(request) {
 
     let pnlRows = [];
     if (studentIds.length) {
-      let pnlQuery = supabase
-        .from('pnl_records')
-        .select('student_id, month, margin, margin_pct, total_cash_in_bank')
-        .in('student_id', studentIds);
-      if (month) pnlQuery = pnlQuery.eq('month', month);
-      const { data, error: pnlErr } = await pnlQuery;
-      if (pnlErr) throw pnlErr;
-      pnlRows = data || [];
+      pnlRows = await fetchInChunks(
+        () => {
+          let q = supabase.from('pnl_records').select('student_id, month, margin, margin_pct, total_cash_in_bank');
+          if (month) q = q.eq('month', month);
+          return q;
+        },
+        'student_id',
+        studentIds
+      );
     }
 
     const pnlByStudentMonth = {};
@@ -50,13 +72,15 @@ export async function GET(request) {
 
     let svcRows = [];
     if (studentIds.length) {
-      let svcQuery = supabase
-        .from('student_services')
-        .select('student_id, month, is_selected, reference_cost_inr, actual_cost_inr, service_date')
-        .in('student_id', studentIds);
-      if (month) svcQuery = svcQuery.eq('month', month);
-      const { data } = await svcQuery;
-      svcRows = data || [];
+      svcRows = await fetchInChunks(
+        () => {
+          let q = supabase.from('student_services').select('student_id, month, is_selected, reference_cost_inr, actual_cost_inr, service_date');
+          if (month) q = q.eq('month', month);
+          return q;
+        },
+        'student_id',
+        studentIds
+      );
     }
 
     const svcByStudentMonth = {};
@@ -83,12 +107,11 @@ export async function GET(request) {
     // permanently "In progress" even once every billable item was ticked.
     let refSvcRows = [];
     if (packageKeys.length) {
-      const { data } = await supabase
-        .from('reference_services')
-        .select('package_key, reference_cost_inr')
-        .eq('cost_type', 'fixed')
-        .in('package_key', packageKeys);
-      refSvcRows = data || [];
+      refSvcRows = await fetchInChunks(
+        () => supabase.from('reference_services').select('package_key, reference_cost_inr').eq('cost_type', 'fixed'),
+        'package_key',
+        packageKeys
+      );
     }
     const refByPkg = {};
     for (const s of refSvcRows || []) {
@@ -103,12 +126,11 @@ export async function GET(request) {
     // shows a date the same way the first collection does.
     let payRows = [];
     if (misRecordIds.length) {
-      const { data } = await supabase
-        .from('mis_payment_lines')
-        .select('mis_record_id, pay_date')
-        .in('mis_record_id', misRecordIds)
-        .not('pay_date', 'is', null);
-      payRows = data || [];
+      payRows = await fetchInChunks(
+        () => supabase.from('mis_payment_lines').select('mis_record_id, pay_date').not('pay_date', 'is', null),
+        'mis_record_id',
+        misRecordIds
+      );
     }
     const lastPayByMis = {};
     for (const p of payRows || []) {
@@ -122,11 +144,11 @@ export async function GET(request) {
     // already uploaded and matched to a student.
     let cardRows = [];
     if (studentIds.length) {
-      const { data } = await supabase
-        .from('card_transactions')
-        .select('student_id, card_holder, source_bank, amount')
-        .in('student_id', studentIds);
-      cardRows = data || [];
+      cardRows = await fetchInChunks(
+        () => supabase.from('card_transactions').select('student_id, card_holder, source_bank, amount'),
+        'student_id',
+        studentIds
+      );
     }
     const cardByStudent = {};
     for (const c of cardRows || []) {
