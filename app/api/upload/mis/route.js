@@ -23,8 +23,19 @@ export async function POST(request) {
     if (!file || !month) return handle({ message: 'file and month are required', status: 400 });
 
     const buffer = new Uint8Array(await file.arrayBuffer());
-    const parsedRows = parseMISWorkbook(buffer, month);
-    const skippedNoStp = parsedRows.skippedNoStp || 0;
+    const rawParsedRows = parseMISWorkbook(buffer, month);
+    const skippedNoStp = rawParsedRows.skippedNoStp || 0;
+
+    // De-dupe by student+month (last occurrence in the file wins) before any
+    // upsert. A single upload - especially a multi-month backfill sheet - can
+    // list the same student/month combo more than once, and Postgres rejects
+    // an upsert batch that would touch the same conflict-key row twice
+    // ("ON CONFLICT DO UPDATE command cannot affect row a second time").
+    const rowByStpMonth = new Map();
+    for (const r of rawParsedRows) {
+      rowByStpMonth.set(`${r.student.stp_code}|${r.mis_record.month}`, r);
+    }
+    const parsedRows = [...rowByStpMonth.values()];
 
     const admin = getSupabaseAdmin();
     const categoryMap = await getCategoryIdMap(admin);
@@ -33,16 +44,23 @@ export async function POST(request) {
       return ok({ inserted: 0, skippedNoStp });
     }
 
-    // 1) Bulk upsert students, keyed by stp_code.
-    const studentRows = parsedRows.map((r) => ({
-      stp_code: r.student.stp_code,
-      student_name: r.student.student_name,
-      email: r.student.email,
-      country: r.student.country,
-      package: r.student.package,
-      source: 'upload',
-      added_by: user.id,
-    }));
+    // 1) Bulk upsert students, keyed by stp_code. De-duped separately (and
+    // only by stp_code, not stp_code+month) because the same student can
+    // legitimately appear under several different months in one file - each
+    // of those is still one mis_records row, but only one students row.
+    const studentRowByStp = new Map();
+    for (const r of parsedRows) {
+      studentRowByStp.set(r.student.stp_code, {
+        stp_code: r.student.stp_code,
+        student_name: r.student.student_name,
+        email: r.student.email,
+        country: r.student.country,
+        package: r.student.package,
+        source: 'upload',
+        added_by: user.id,
+      });
+    }
+    const studentRows = [...studentRowByStp.values()];
     const { data: upsertedStudents, error: studErr } = await admin
       .from('students')
       .upsert(studentRows, { onConflict: 'stp_code' })
