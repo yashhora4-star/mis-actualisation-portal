@@ -114,6 +114,8 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const [historyFor, setHistoryFor] = useState(null);
   const [q, setQ] = useState('');
   const [payingRow, setPayingRow] = useState(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // `silent` skips the loading-spinner state - used when a child (the service
   // checklist) refreshes this list after a tick/cost save. Without it, every
@@ -135,6 +137,11 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   }
 
   useEffect(() => { load(); }, [month]);
+  // Whenever the visible set of students changes shape - a new search term
+  // or a different month - jump back to page 1. Otherwise a filter that
+  // narrows the list down could leave you stranded on a page number that no
+  // longer exists.
+  useEffect(() => { setPage(1); }, [q, month]);
 
   async function deleteRow(r) {
     if (!window.confirm(`Delete ${r.students?.student_name} - ${r.month}? This removes their MIS record, P&L record, and ticked services for this month.`)) return;
@@ -197,6 +204,9 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const totalNetAfterCharges = filteredRows.reduce((s, r) => s + (Number(r.net_after_charges) || 0), 0);
 
   const selected = filteredRows.find((r) => r.id === selectedId) || null;
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <>
@@ -230,7 +240,15 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', minHeight: 480 }}>
+        {/* Both columns below need a bounded height for `overflowY: auto` to
+            actually create their own scrollbar - with only `minHeight` set,
+            neither column had anything to scroll within, so they just grew to
+            fit all their content (up to 1400+ students, or a long service
+            checklist) and the whole page scrolled instead - a scroll that
+            effectively never ended. Pagination keeps the list itself short;
+            this height bound keeps both list and detail panel self-contained
+            regardless of how many rows either one has. */}
+        <div style={{ display: 'flex', height: 640 }}>
           <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: 12, borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <input
@@ -248,7 +266,7 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
               </div>
             </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {filteredRows.map((r) => (
+              {pagedRows.map((r) => (
                 <div
                   key={r.id}
                   onClick={() => setSelectedId(r.id)}
@@ -271,6 +289,13 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
                 <div className="empty-state">{needle ? 'No students match that search.' : 'No students for this month yet.'}</div>
               )}
             </div>
+            {filteredRows.length > PAGE_SIZE && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+                <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>Prev</button>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>Page {safePage} of {totalPages}</span>
+                <button className="btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}>Next</button>
+              </div>
+            )}
           </div>
 
           <div style={{ flex: 1, padding: 20, overflowY: 'auto' }}>
