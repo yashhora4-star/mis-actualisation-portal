@@ -37,8 +37,11 @@ export default function CrmApp() {
       const seesAllStudents = !!boot?.profile?.sees_all_students;
       // Superadmin always has full MIS write access; a regular member only gets it
       // if flagged as an MIS POC (add/edit/delete students, record payments).
-      // Servicing (ticking services) stays available to every active member regardless.
+      // Servicing (ticking services) stays available to every active member,
+      // except an Accounts POC (sees_all_students) - that role is view-only:
+      // full visibility across every student and country, but no ticking.
       const canWrite = role === 'superadmin' || !!boot?.profile?.is_mis_poc;
+      const canTickServices = role === 'superadmin' || !seesAllStudents;
       const pendingCount = (boot?.pendingActualisation?.cardTransactions || 0) + (boot?.pendingActualisation?.servicingLines || 0);
 
   return React.createElement('div', { className: 'app' },
@@ -46,7 +49,7 @@ export default function CrmApp() {
                                  React.createElement('div', { className: 'main' },
                                                            React.createElement(Topbar, { active, month, onMonthChange: setMonth, months: boot?.months }),
                                                            React.createElement('div', { className: 'content' },
-                                                                                       active === 'sheet' && React.createElement(ActualisationSheet, { month, role, canWrite }),
+                                                                                       active === 'sheet' && React.createElement(ActualisationSheet, { month, role, canWrite, canTickServices }),
                                                                                        active === 'cardowners' && (role === 'superadmin' || seesAllStudents) && React.createElement(CardOwnerSummary),
                                                                                        active === 'banktransfers' && (role === 'superadmin' || seesAllStudents) && React.createElement(BankTransferSummary),
                                                                                        active === 'upload' && role === 'superadmin' && React.createElement(UploadPanel, { onUploaded: loadBootstrap }),
