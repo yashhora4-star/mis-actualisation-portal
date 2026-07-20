@@ -38,25 +38,41 @@ export async function GET() {
   }
 }
 
-// POST { email, name } - invites a new member (always role='member'; promote
-// to superadmin manually in Supabase if ever needed - kept out of the UI on purpose)
+// POST { email, name, password } - creates a new member directly, with the
+// password the superadmin just chose (share it with them out of band - Slack,
+// WhatsApp, in person). Always role='member'; promote to superadmin manually
+// in Supabase if ever needed - kept out of the UI on purpose.
+//
+// Deliberately NOT using Supabase's inviteUserByEmail here - that depends on
+// Supabase's own email sending (rate-limited, and blocked entirely until a
+// verified sending domain is set up). Creating the account with a password
+// already set means a new member can sign in immediately, with zero
+// dependency on any email ever arriving.
 export async function POST(request) {
   try {
     const supabase = await getSupabaseServer();
     const { user } = await requireSuperadmin(supabase);
-    const { email, name } = await request.json();
+    const { email, name, password } = await request.json();
     if (!email) return handle({ message: 'email is required', status: 400 });
+    if (!password || password.length < 8) {
+      return handle({ message: 'A temporary password (min 8 characters) is required - you\'ll share it with them directly.', status: 400 });
+    }
 
     const admin = getSupabaseAdmin();
-    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email);
-    if (inviteErr) throw inviteErr;
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email, password, email_confirm: true,
+    });
+    if (createErr) throw createErr;
 
     const { data: profile, error: profileErr } = await admin
       .from('users')
-      .upsert({ id: invited.user.id, email, name: name || null, role: 'member', active: true }, { onConflict: 'id' })
+      .upsert({ id: created.user.id, email, name: name || null, role: 'member', active: true }, { onConflict: 'id' })
       .select()
       .single();
-    if (profileErr) throw profileErr;
+    if (profileErr) {
+      await admin.auth.admin.deleteUser(created.user.id); // rollback the auth user
+      throw profileErr;
+    }
 
     await logActivity(admin, {
       entityType: 'user', entityId: profile.id, action: 'created',
@@ -69,18 +85,32 @@ export async function POST(request) {
   }
 }
 
-// PATCH { id, active?, sees_all_students?, is_mis_poc?, countries? } - manage
-// a member's active status, whether they're the Accounts POC who sees every
-// student, whether they're an MIS POC who can add/edit students and record
-// payments, and (for country POCs) which countries' students they're scoped to.
+// PATCH { id, active?, sees_all_students?, is_mis_poc?, countries?, password? }
+// - manage a member's active status, whether they're the Accounts POC who
+// sees every student, whether they're an MIS POC who can add/edit students
+// and record payments, (for country POCs) which countries' students they're
+// scoped to, and/or set a brand-new password directly (no email sent -
+// share the new password with them yourself).
 export async function PATCH(request) {
   try {
     const supabase = await getSupabaseServer();
     const { user } = await requireSuperadmin(supabase);
-    const { id, active, sees_all_students, is_mis_poc, countries } = await request.json();
+    const { id, active, sees_all_students, is_mis_poc, countries, password } = await request.json();
     if (!id) return handle({ message: 'id is required', status: 400 });
 
     const admin = getSupabaseAdmin();
+
+    if (password !== undefined) {
+      if (!password || password.length < 8) {
+        return handle({ message: 'Password must be at least 8 characters', status: 400 });
+      }
+      const { error: pwErr } = await admin.auth.admin.updateUserById(id, { password });
+      if (pwErr) throw pwErr;
+      await logActivity(admin, {
+        entityType: 'user', entityId: id, action: 'password_reset',
+        performedBy: user.id, details: {},
+      });
+    }
 
     const patch = {};
     if (active !== undefined) patch.active = active;
@@ -110,11 +140,13 @@ export async function PATCH(request) {
       data = res.data;
     }
 
-    await logActivity(admin, {
-      entityType: 'user', entityId: id,
-      action: active !== undefined ? (active ? 'reactivated' : 'deactivated') : 'edited',
-      performedBy: user.id, details: { active, sees_all_students, is_mis_poc, countries },
-    });
+    if (active !== undefined || sees_all_students !== undefined || is_mis_poc !== undefined || Array.isArray(countries)) {
+      await logActivity(admin, {
+        entityType: 'user', entityId: id,
+        action: active !== undefined ? (active ? 'reactivated' : 'deactivated') : 'edited',
+        performedBy: user.id, details: { active, sees_all_students, is_mis_poc, countries },
+      });
+    }
 
     return ok({ user: data });
   } catch (err) {
