@@ -104,7 +104,7 @@ function RecordPaymentModal({ row, onClose, onSaved }) {
 // detail panel on the right for whichever student is selected - replacing
 // the old dense, expandable multi-column table which got unwieldy once
 // there were more than a handful of fields per student.
-export default function ActualisationSheet({ month, role, canWrite }) {
+export default function ActualisationSheet({ month, role, canWrite, canTickServices = true }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -336,6 +336,7 @@ export default function ActualisationSheet({ month, role, canWrite }) {
                   month={selected.month}
                   role={role}
                   onChanged={load}
+                  canTick={canTickServices}
                 />
               </>
             )}

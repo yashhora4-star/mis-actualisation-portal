@@ -6,7 +6,7 @@ import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 
 const CARD_OWNERS = ['Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)'];
 
-export default function ServiceChecklist({ studentId, month, role, onChanged }) {
+export default function ServiceChecklist({ studentId, month, role, onChanged, canTick = true }) {
   const [checklist, setChecklist] = useState([]);
   const [packageKey, setPackageKey] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -145,7 +145,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                 <input
                   type="checkbox"
                   checked={item.is_selected}
-                  disabled={item.locked && role !== 'superadmin'}
+                  disabled={(item.locked && role !== 'superadmin') || !canTick}
                   onChange={(e) => toggle(item, e.target.checked)}
                 />
               </td>
@@ -157,7 +157,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                   <input
                     type="date"
                     value={item.service_date || ''}
-                    disabled={item.locked && role !== 'superadmin'}
+                    disabled={(item.locked && role !== 'superadmin') || !canTick}
                     onChange={(e) => changeDate(item, e.target.value)}
                     style={{ fontFamily: 'var(--mono)', fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 4, padding: '2px 4px' }}
                   />
@@ -186,18 +186,20 @@ export default function ServiceChecklist({ studentId, month, role, onChanged }) 
                     {item.proof_file_url && (
                       <a href={item.proof_file_url} target="_blank" rel="noreferrer">View proof</a>
                     )}
-                    <button className="btn" onClick={() => setProofFor({
-                      id: item.id,
-                      reference_service_id: item.reference_service_id,
-                      service_name: item.service_name,
-                      utr: item.utr,
-                      payment_mode: item.payment_mode,
-                      card_owner: item.card_owner,
-                      actual_cost_inr: item.actual_cost_inr,
-                      reference_cost_inr: item.reference_cost_inr,
-                    })}>
-                      {item.utr || item.proof_file_url ? 'Update' : 'Add payment details'}
-                    </button>
+                    {canTick && (
+                      <button className="btn" onClick={() => setProofFor({
+                        id: item.id,
+                        reference_service_id: item.reference_service_id,
+                        service_name: item.service_name,
+                        utr: item.utr,
+                        payment_mode: item.payment_mode,
+                        card_owner: item.card_owner,
+                        actual_cost_inr: item.actual_cost_inr,
+                        reference_cost_inr: item.reference_cost_inr,
+                      })}>
+                        {item.utr || item.proof_file_url ? 'Update' : 'Add payment details'}
+                      </button>
+                    )}
                   </div>
                 ) : '-'}
               </td>

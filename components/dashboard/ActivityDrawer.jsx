@@ -10,6 +10,7 @@ const ACTION_LABELS = {
   overridden: 'Edited by superadmin',
   locked: 'Locked',
   proof_uploaded: 'Payment details added',
+  payment_recorded: 'Payment recorded',
   created: 'Added',
   edited: 'Details edited',
   deleted: 'Deleted',
@@ -46,6 +47,13 @@ function describe(entry) {
       if (d.actual_cost_inr != null) parts.push(`net amount Rs ${inr(d.actual_cost_inr)}`);
       if (d.file_name) parts.push(`proof uploaded (${d.file_name})`);
       return parts.length ? `${parts.join(', ')}.` : 'Payment proof uploaded.';
+    }
+    case 'payment_recorded': {
+      const parts = [];
+      if (d.amount != null) parts.push(`Rs ${inr(d.amount)} received`);
+      if (d.pay_date) parts.push(`on ${fmtDate(d.pay_date)}`);
+      if (d.note) parts.push(`(${d.note})`);
+      return parts.length ? `${parts.join(' ')}.` : 'Payment recorded.';
     }
     case 'created':
       return `${d.student_name || 'Student'} added${d.month ? ` for ${d.month}` : ''}${d.source ? ` (${d.source})` : ''}.`;
