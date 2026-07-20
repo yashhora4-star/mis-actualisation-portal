@@ -115,15 +115,22 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const [q, setQ] = useState('');
   const [payingRow, setPayingRow] = useState(null);
 
-  async function load() {
-    setLoading(true);
+  // `silent` skips the loading-spinner state - used when a child (the service
+  // checklist) refreshes this list after a tick/cost save. Without it, every
+  // tick/untick set `loading` true, which hit the `if (loading) return
+  // <div>Loading...</div>` guard below and unmounted the entire master-detail
+  // view (list + detail panel + checklist) mid-interaction - most visibly
+  // breaking the payment-details popup, which never got a chance to render
+  // before its own component unmounted.
+  async function load(silent) {
+    if (!silent) setLoading(true);
     try {
       const res = await api(`/api/students${month ? `?month=${encodeURIComponent(month)}` : ''}`);
       setRows(res.rows || []);
     } catch (e) {
       setErr(e.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
@@ -335,7 +342,7 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
                   studentId={selected.students?.id}
                   month={selected.month}
                   role={role}
-                  onChanged={load}
+                  onChanged={() => load(true)}
                   canTick={canTickServices}
                 />
               </>

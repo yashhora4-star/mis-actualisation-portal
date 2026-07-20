@@ -200,18 +200,28 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
               <td>{item.service_name}</td>
               <td><span className={`tag ${item.cost_type === 'fixed' ? 'ac' : item.cost_type === 'variable' ? 'vas-other' : ''}`}>{item.cost_type}</span></td>
               <td className="num-cell">
-                <input
-                  type="number"
-                  value={costDraft[item.reference_service_id] ?? (item.reference_cost_inr != null ? item.reference_cost_inr : '')}
-                  disabled={(item.locked && role !== 'superadmin') || !canTick}
-                  placeholder="Enter cost"
-                  onChange={(e) => setCostDraft((prev) => ({ ...prev, [item.reference_service_id]: e.target.value }))}
-                  onBlur={(e) => {
-                    setCostDraft((prev) => { const next = { ...prev }; delete next[item.reference_service_id]; return next; });
-                    if (Number(e.target.value || 0) !== Number(item.reference_cost_inr || 0)) saveReferenceCost(item, e.target.value);
-                  }}
-                  style={{ width: 100, fontFamily: 'var(--mono)', fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 4, padding: '2px 4px', textAlign: 'right' }}
-                />
+                {item.cost_type === 'fixed' && item.catalog_reference_cost_inr == null ? (
+                  // Only fixed-cost services with no seeded catalog value (e.g.
+                  // VAS Accommodation, whose real cost varies per booking) get a
+                  // manual per-student entry field - everything else either has
+                  // a known fixed price already or isn't accounts' to cost out.
+                  <input
+                    type="number"
+                    value={costDraft[item.reference_service_id] ?? (item.reference_cost_inr != null ? item.reference_cost_inr : '')}
+                    disabled={(item.locked && role !== 'superadmin') || !canTick}
+                    placeholder="Enter cost"
+                    onChange={(e) => setCostDraft((prev) => ({ ...prev, [item.reference_service_id]: e.target.value }))}
+                    onBlur={(e) => {
+                      setCostDraft((prev) => { const next = { ...prev }; delete next[item.reference_service_id]; return next; });
+                      if (Number(e.target.value || 0) !== Number(item.reference_cost_inr || 0)) saveReferenceCost(item, e.target.value);
+                    }}
+                    style={{ width: 100, fontFamily: 'var(--mono)', fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 4, padding: '2px 4px', textAlign: 'right' }}
+                  />
+                ) : (
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: item.reference_cost_inr != null ? 'inherit' : 'var(--muted)' }}>
+                    {item.reference_cost_inr != null ? `Rs ${inr(item.reference_cost_inr)}` : (item.cost_type === 'in_house' ? 'Free' : '-')}
+                  </span>
+                )}
               </td>
               <td>
                 {item.is_selected ? (
