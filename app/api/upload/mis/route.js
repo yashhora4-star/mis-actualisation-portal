@@ -65,9 +65,14 @@ export async function POST(request) {
     const { data: upsertedMis, error: misErr } = await admin
       .from('mis_records')
       .upsert(misRows, { onConflict: 'student_id,month' })
-      .select('id, student_id');
+      .select('id, student_id, month');
     if (misErr) throw misErr;
-    const studentIdToMisId = Object.fromEntries(upsertedMis.map((m) => [m.student_id, m.id]));
+    // Keyed by student_id + month, not just student_id - a single upload can
+    // contain the same student across more than one month (backfill sheets
+    // span several months in one file), and keying by student_id alone would
+    // collapse those into one id, misattributing every line item below to
+    // whichever month's row happened to come back last.
+    const misIdByStudentMonth = Object.fromEntries(upsertedMis.map((m) => [m.student_id + '|' + m.month, m.id]));
 
     const misRecordIds = upsertedMis.map((m) => m.id);
 
@@ -82,7 +87,7 @@ export async function POST(request) {
 
     for (const r of parsedRows) {
       const studentId = stpToStudentId[r.student.stp_code];
-      const misId = studentIdToMisId[studentId];
+      const misId = misIdByStudentMonth[studentId + '|' + r.mis_record.month];
       if (!misId) continue;
       for (const l of r.paymentLines) paymentInserts.push({ mis_record_id: misId, ...l });
       for (const l of r.revenueLines) revenueInserts.push({ mis_record_id: misId, category_id: categoryMap[l.category_code] || null, amount: l.amount });
