@@ -219,7 +219,7 @@ export default function TeamPanel() {
                                     />
                                     MIS POC - can add/edit/delete students and record payments (servicing-only members can only tick services)
                                   </label>
-                                  !{draft.sees_all_students && (
+                                  {!draft.sees_all_students && (
                                     <div>
                                       <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
                                         Or scope this person to specific countries - they'll only see and tick services for students in these countries, and nothing else on the portal.
@@ -237,7 +237,7 @@ export default function TeamPanel() {
                                         ))}
                                       </div>
                                     </div>
-                                  )
+                                  )}
                                   <div>
                                     <button className="btn primary" onClick={() => saveAccess(u)} disabled={saving}>
                                       {saving ? 'Saving...' : 'Save access'}
@@ -250,7 +250,7 @@ export default function TeamPanel() {
                           </Fragment>
                         ))}
                                     </tbody>
-                      </table>
+                        </table>
                       )}
               </div>
         </>
