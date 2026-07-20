@@ -65,6 +65,11 @@ export async function GET(request) {
         // student's own tick row takes priority over the catalog default;
         // only fall back to the catalog value when nothing's been entered yet.
         reference_cost_inr: tick?.reference_cost_inr ?? svc.reference_cost_inr,
+        // Raw catalog value, unmerged with any per-student override - lets the
+        // UI tell "this fixed service has no seeded catalog cost at all" (show
+        // an editable input) apart from "a value has already been entered"
+        // (still show the input, but not because reference_cost_inr is null).
+        catalog_reference_cost_inr: svc.reference_cost_inr,
         notes: svc.notes,
         is_selected: tick?.is_selected || false,
         actual_cost_inr: tick?.actual_cost_inr ?? null,
