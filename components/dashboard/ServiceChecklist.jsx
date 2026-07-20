@@ -33,9 +33,8 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
   }
 
   useEffect(() => { if (studentId && month) load(false); }, [studentId, month]);
-  // Let the parent table refresh its totals once, when this checklist unmounts
-  // (i.e. the row is collapsed) instead of after every single click - that
-  // full-table reload on every tick was what made ticking feel like it hung.
+  // Also refresh the parent table on unmount, as a final catch-all for
+  // whatever the master-detail panel does when a student gets deselected.
   useEffect(() => () => { onChanged && onChanged(); }, []);
 
   async function toggle(item, checked) {
@@ -60,6 +59,12 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
       setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
         ? { ...c, id: res.tick.id, is_selected: res.tick.is_selected, service_date: res.tick.service_date, locked: res.tick.locked }
         : c));
+      // Ticking or unticking changes this student's Closed/In-progress status
+      // and margin in the outer list - refresh it right away rather than only
+      // on unmount, since the master-detail panel stays mounted for as long
+      // as any student is selected (unmount basically never happens until
+      // you deselect), which was leaving the list showing a stale status.
+      onChanged && onChanged();
       // Once a service gets ticked on, require the UTR + payment mode + proof
       // for it before it counts as done - Cancel below reverts the tick rather
       // than leaving it half-finished.
@@ -106,6 +111,10 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
       setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
         ? { ...c, id: res.tick.id, reference_cost_inr: res.tick.reference_cost_inr, locked: res.tick.locked }
         : c));
+      // Feeds straight into this student's margin if the service is already
+      // ticked - refresh the outer list so that updates without waiting on
+      // unmount, same reasoning as toggle() above.
+      onChanged && onChanged();
     } catch (e) {
       setErr(e.message);
       load(true);
@@ -270,7 +279,7 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
           target={proofFor}
           onClose={() => setProofFor(null)}
           onCancelTick={() => cancelTick(proofFor.reference_service_id)}
-          onSaved={() => { setProofFor(null); load(true); }}
+          onSaved={() => { setProofFor(null); load(true); onChanged && onChanged(); }}
         />
       )}
       {historyFor && (
