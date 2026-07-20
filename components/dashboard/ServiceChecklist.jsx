@@ -14,6 +14,10 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
   const [savingId, setSavingId] = useState(null);
   const [proofFor, setProofFor] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
+  // Local draft text for the manual reference-cost input, keyed by
+  // reference_service_id - kept separate from `checklist` so typing doesn't
+  // fire a save on every keystroke; it only saves on blur/Enter.
+  const [costDraft, setCostDraft] = useState({});
 
   async function load(silent) {
     if (!silent) setLoading(true);
@@ -67,6 +71,41 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
           reference_cost_inr: item.reference_cost_inr,
         });
       }
+    } catch (e) {
+      setErr(e.message);
+      load(true);
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  // Some services (VAS Accommodation, for one) don't have one fixed cost
+  // across every student - the real booking cost varies student to student,
+  // so there's nothing sensible to seed once in the reference_services
+  // catalog. This lets it be typed in per student instead; it's saved onto
+  // this student's own tick row and read back from there, ahead of whatever
+  // (if anything) the catalog has.
+  async function saveReferenceCost(item, value) {
+    const refId = item.reference_service_id;
+    const numValue = value === '' ? null : Number(value);
+    setSavingId(refId);
+    setChecklist((prev) => prev.map((c) => c.reference_service_id === refId ? { ...c, reference_cost_inr: numValue } : c));
+    try {
+      const res = await api('/api/student-services', {
+        method: 'POST',
+        body: {
+          student_id: studentId,
+          month,
+          reference_service_id: refId,
+          is_selected: item.is_selected,
+          service_date: item.service_date,
+          reference_cost_inr: numValue,
+          skip_lock: true,
+        },
+      });
+      setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
+        ? { ...c, id: res.tick.id, reference_cost_inr: res.tick.reference_cost_inr, locked: res.tick.locked }
+        : c));
     } catch (e) {
       setErr(e.message);
       load(true);
@@ -151,7 +190,20 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
               </td>
               <td>{item.service_name}</td>
               <td><span className={`tag ${item.cost_type === 'fixed' ? 'ac' : item.cost_type === 'variable' ? 'vas-other' : ''}`}>{item.cost_type}</span></td>
-              <td className="num-cell">{item.reference_cost_inr != null ? `Rs ${inr(item.reference_cost_inr)}` : '-'}</td>
+              <td className="num-cell">
+                <input
+                  type="number"
+                  value={costDraft[item.reference_service_id] ?? (item.reference_cost_inr != null ? item.reference_cost_inr : '')}
+                  disabled={(item.locked && role !== 'superadmin') || !canTick}
+                  placeholder="Enter cost"
+                  onChange={(e) => setCostDraft((prev) => ({ ...prev, [item.reference_service_id]: e.target.value }))}
+                  onBlur={(e) => {
+                    setCostDraft((prev) => { const next = { ...prev }; delete next[item.reference_service_id]; return next; });
+                    if (Number(e.target.value || 0) !== Number(item.reference_cost_inr || 0)) saveReferenceCost(item, e.target.value);
+                  }}
+                  style={{ width: 100, fontFamily: 'var(--mono)', fontSize: 12, border: '1px solid var(--border-2)', borderRadius: 4, padding: '2px 4px', textAlign: 'right' }}
+                />
+              </td>
               <td>
                 {item.is_selected ? (
                   <input
