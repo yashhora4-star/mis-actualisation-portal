@@ -116,6 +116,11 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const [payingRow, setPayingRow] = useState(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
+  const [countryFilter, setCountryFilter] = useState('');
+  const [packageFilter, setPackageFilter] = useState('');
+  const [pocFilter, setPocFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [team, setTeam] = useState([]);
 
   // `silent` skips the loading-spinner state - used when a child (the service
   // checklist) refreshes this list after a tick/cost save. Without it, every
@@ -137,11 +142,17 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   }
 
   useEffect(() => { load(); }, [month]);
-  // Whenever the visible set of students changes shape - a new search term
-  // or a different month - jump back to page 1. Otherwise a filter that
-  // narrows the list down could leave you stranded on a page number that no
-  // longer exists.
-  useEffect(() => { setPage(1); }, [q, month]);
+  // Team roster for the POC filter - who looks after which country, per
+  // Team access. Fetched once; doesn't change often enough to warrant
+  // re-fetching alongside the student list.
+  useEffect(() => {
+    api('/api/team').then((res) => setTeam(res.team || [])).catch(() => {});
+  }, []);
+  // Whenever the visible set of students changes shape - a new search term,
+  // a different month, or any of the filters below - jump back to page 1.
+  // Otherwise a filter that narrows the list down could leave you stranded
+  // on a page number that no longer exists.
+  useEffect(() => { setPage(1); }, [q, month, countryFilter, packageFilter, pocFilter, statusFilter]);
 
   async function deleteRow(r) {
     if (!window.confirm(`Delete ${r.students?.student_name} - ${r.month}? This removes their MIS record, P&L record, and ticked services for this month.`)) return;
@@ -191,12 +202,34 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   if (err) return <div className="error-text">{err}</div>;
 
   const needle = q.trim().toLowerCase();
-  const filteredRows = needle
-    ? rows.filter((r) =>
-        (r.students?.stp_code || '').toLowerCase().includes(needle) ||
+  // Options for the Country/Package dropdowns are derived from the full,
+  // unfiltered row set (not filteredRows) so picking one filter doesn't
+  // shrink the choices available in the others.
+  const countryOptions = [...new Set(rows.map((r) => r.students?.country).filter(Boolean))].sort();
+  const packageOptions = [...new Set(rows.map((r) => r.students?.package).filter(Boolean))].sort();
+  const selectedPoc = team.find((u) => u.id === pocFilter) || null;
+  // A POC filter means "students in a country this person is scoped to" -
+  // the same scoping Team access uses for what they can see/act on live.
+  // The Accounts POC / superadmin are scoped to everyone, so picking one of
+  // them here is a no-op rather than an error.
+  function pocCoversCountry(poc, country) {
+    if (!poc) return true;
+    if (poc.sees_all_students) return true;
+    return !!country && poc.countries.includes(country);
+  }
+  const filteredRows = rows.filter((r) => {
+    if (needle) {
+      const hit = (r.students?.stp_code || '').toLowerCase().includes(needle) ||
         (r.students?.email || '').toLowerCase().includes(needle) ||
-        (r.students?.student_name || '').toLowerCase().includes(needle))
-    : rows;
+        (r.students?.student_name || '').toLowerCase().includes(needle);
+      if (!hit) return false;
+    }
+    if (countryFilter && r.students?.country !== countryFilter) return false;
+    if (packageFilter && r.students?.package !== packageFilter) return false;
+    if (statusFilter && r.status !== statusFilter) return false;
+    if (selectedPoc && !pocCoversCountry(selectedPoc, r.students?.country)) return false;
+    return true;
+  });
 
   const totalSale = filteredRows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
   const totalCollected = filteredRows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
@@ -237,6 +270,51 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
               sale amount - matches the per-student Margin % fix below. */}
           <div className="value">{totalNetAfterCharges ? pct(((totalNetAfterCharges - totalActualised) / totalNetAfterCharges) * 100) : '-'}</div>
         </div>
+      </div>
+
+      <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+        <select
+          value={countryFilter}
+          onChange={(e) => setCountryFilter(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
+        >
+          <option value="">All countries</option>
+          {countryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={packageFilter}
+          onChange={(e) => setPackageFilter(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
+        >
+          <option value="">All packages</option>
+          {packageOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select
+          value={pocFilter}
+          onChange={(e) => setPocFilter(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
+        >
+          <option value="">All POCs</option>
+          {team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
+        >
+          <option value="">All statuses</option>
+          <option value="In progress">In progress</option>
+          <option value="Closed">Closed</option>
+          <option value="-">--</option>
+        </select>
+        {(countryFilter || packageFilter || pocFilter || statusFilter) && (
+          <button
+            className="btn"
+            onClick={() => { setCountryFilter(''); setPackageFilter(''); setPocFilter(''); setStatusFilter(''); }}
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
