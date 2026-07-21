@@ -24,17 +24,41 @@ async function fetchSheetAsWorkbookBuffer(sheetId, tabName) {
 
 export async function POST(request) {
     try {
-          const supabase = await getSupabaseServer();
-          const user = await requireUser(supabase);
-          const profile = await getProfile(supabase, user.id);
-          requireRole(profile, CAN_WRITE);
+      const admin = getSupabaseAdmin();
+
+          // Two ways in: a logged-in superadmin clicking "Sync now" in Upload
+          // sheets, or a shared secret from the automatic/scheduled sync -
+          // which has no browser session to log in with. Both need a
+          // `user.id` to attribute the synced records to; the secret path
+          // attributes to whichever active superadmin was created first,
+          // since there's no logged-in person to credit it to.
+          const cronSecret = request.headers.get('x-sync-secret');
+          let user;
+          if (cronSecret && process.env.SHEET_SYNC_SECRET && cronSecret === process.env.SHEET_SYNC_SECRET) {
+                const { data: sysUser, error: sysErr } = await admin
+                  .from('users')
+                  .select('id')
+                  .eq('role', 'superadmin')
+                  .eq('active', true)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .single();
+                if (sysErr || !sysUser) {
+                      return handle({ message: 'No active superadmin found to attribute the automated sync to', status: 500 });
+                }
+                user = { id: sysUser.id };
+          } else {
+                const supabase = await getSupabaseServer();
+                user = await requireUser(supabase);
+                const profile = await getProfile(supabase, user.id);
+                requireRole(profile, CAN_WRITE);
+          }
 
       const body = await request.json();
           const sheetType = body.sheetType;
           const month = body.month;
           if (!sheetType || !month) return handle({ message: 'sheetType and month are required', status: 400 });
 
-      const admin = getSupabaseAdmin();
           const { data: config, error: cfgErr } = await admin
             .from('sheet_sync_config')
             .select('*')
