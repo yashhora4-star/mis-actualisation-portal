@@ -25,12 +25,12 @@ export async function GET() {
       .order('created_at');
     if (error) throw error;
 
-    const { data: accessRows } = await supabase.from('user_country_access').select('user_id, country');
-    const countriesByUser = {};
+    const { data: accessRows } = await supabase.from('user_package_access').select('user_id, package');
+    const packagesByUser = {};
     for (const r of accessRows || []) {
-      (countriesByUser[r.user_id] = countriesByUser[r.user_id] || []).push(r.country);
+      (packagesByUser[r.user_id] = packagesByUser[r.user_id] || []).push(r.package);
     }
-    const users = (data || []).map((u) => ({ ...u, countries: countriesByUser[u.id] || [] }));
+    const users = (data || []).map((u) => ({ ...u, packages: packagesByUser[u.id] || [] }));
 
     return ok({ users });
   } catch (err) {
@@ -85,17 +85,17 @@ export async function POST(request) {
   }
 }
 
-// PATCH { id, active?, sees_all_students?, is_mis_poc?, countries?, password? }
+// PATCH { id, active?, sees_all_students?, is_mis_poc?, packages?, password? }
 // - manage a member's active status, whether they're the Accounts POC who
 // sees every student, whether they're an MIS POC who can add/edit students
-// and record payments, (for country POCs) which countries' students they're
+// and record payments, (for package POCs) which packages' students they're
 // scoped to, and/or set a brand-new password directly (no email sent -
 // share the new password with them yourself).
 export async function PATCH(request) {
   try {
     const supabase = await getSupabaseServer();
     const { user } = await requireSuperadmin(supabase);
-    const { id, active, sees_all_students, is_mis_poc, countries, password } = await request.json();
+    const { id, active, sees_all_students, is_mis_poc, packages, password } = await request.json();
     if (!id) return handle({ message: 'id is required', status: 400 });
 
     const admin = getSupabaseAdmin();
@@ -124,13 +124,13 @@ export async function PATCH(request) {
       data = res.data;
     }
 
-    if (Array.isArray(countries)) {
-      const { error: delErr } = await admin.from('user_country_access').delete().eq('user_id', id);
+    if (Array.isArray(packages)) {
+      const { error: delErr } = await admin.from('user_package_access').delete().eq('user_id', id);
       if (delErr) throw delErr;
-      if (countries.length) {
+      if (packages.length) {
         const { error: insErr } = await admin
-          .from('user_country_access')
-          .insert(countries.map((country) => ({ user_id: id, country })));
+          .from('user_package_access')
+          .insert(packages.map((pkg) => ({ user_id: id, package: pkg })));
         if (insErr) throw insErr;
       }
     }
@@ -140,11 +140,11 @@ export async function PATCH(request) {
       data = res.data;
     }
 
-    if (active !== undefined || sees_all_students !== undefined || is_mis_poc !== undefined || Array.isArray(countries)) {
+    if (active !== undefined || sees_all_students !== undefined || is_mis_poc !== undefined || Array.isArray(packages)) {
       await logActivity(admin, {
         entityType: 'user', entityId: id,
         action: active !== undefined ? (active ? 'reactivated' : 'deactivated') : 'edited',
-        performedBy: user.id, details: { active, sees_all_students, is_mis_poc, countries },
+        performedBy: user.id, details: { active, sees_all_students, is_mis_poc, packages },
       });
     }
 
@@ -154,7 +154,7 @@ export async function PATCH(request) {
   }
 }
 
-// DELETE { id } - permanently removes a member: their country-access rows,
+// DELETE { id } - permanently removes a member: their package-access rows,
 // their profile row, and their Supabase Auth account. Superadmin only.
 // Can't delete yourself or another superadmin through this route - guardrails
 // against locking everyone out or nuking the wrong account by mistake.
@@ -173,7 +173,7 @@ export async function DELETE(request) {
       return handle({ message: "Can't delete a superadmin", status: 400 });
     }
 
-    await admin.from('user_country_access').delete().eq('user_id', id);
+    await admin.from('user_package_access').delete().eq('user_id', id);
     await admin.from('users').delete().eq('id', id);
 
     const { error: authErr } = await admin.auth.admin.deleteUser(id);
