@@ -1,6 +1,6 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getProfile, getAccessScope, isAllowedCountry } from '@/utils/roles';
+import { getProfile, getAccessScope, isAllowedPackage } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 
@@ -17,9 +17,9 @@ export async function GET(request) {
 
     const profile = await getProfile(supabase, user.id);
     const scope = await getAccessScope(supabase, profile);
-    if (!scope.allCountries) {
-      const { data: studentRow } = await supabase.from('students').select('country').eq('id', studentId).maybeSingle();
-      if (!isAllowedCountry(scope, studentRow?.country)) {
+    if (!scope.allPackages) {
+      const { data: studentRow } = await supabase.from('students').select('package').eq('id', studentId).maybeSingle();
+      if (!isAllowedPackage(scope, studentRow?.package)) {
         return handle({ message: 'Not authorized for this student', status: 403 });
       }
     }
@@ -107,9 +107,9 @@ export async function POST(request) {
     }
 
     const scope = await getAccessScope(supabase, profile);
-    if (!scope.allCountries) {
-      const { data: studentRow } = await supabase.from('students').select('country').eq('id', student_id).maybeSingle();
-      if (!isAllowedCountry(scope, studentRow?.country)) {
+    if (!scope.allPackages) {
+      const { data: studentRow } = await supabase.from('students').select('package').eq('id', student_id).maybeSingle();
+      if (!isAllowedPackage(scope, studentRow?.package)) {
         return handle({ message: 'Not authorized for this student', status: 403 });
       }
     }
