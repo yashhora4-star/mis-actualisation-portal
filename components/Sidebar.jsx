@@ -1,9 +1,11 @@
 'use client';
 import React, { useState } from 'react';
+import { PACKAGE_OPTIONS } from '@/lib/reference-services';
 
 // `fullAccessOnly` = superadmin or the Accounts POC (sees_all_students) - a
-// country-scoped POC only ever gets the Actualisation Sheet, per the
-// "nothing else on the portal" requirement for country-level access.
+// package-scoped POC/service-team member only ever gets the Actualisation
+// Sheet, per the "nothing else on the portal" requirement for package-level
+// access.
 const NAV = [
   { key: 'sheet', label: 'Actualisation Sheet' },
   { key: 'cardowners', label: 'Card owner summary', fullAccessOnly: true },
@@ -12,27 +14,68 @@ const NAV = [
   { key: 'team', label: 'Team access', superadminOnly: true },
   ];
 
-export default function Sidebar({ active, onChange, role, pendingCount, seesAllStudents }) {
+export default function Sidebar({ active, onChange, role, pendingCount, seesAllStudents, allPackages, myPackages, activePackage, onPackageChange }) {
     const [collapsed, setCollapsed] = useState(false);
+    const [sheetExpanded, setSheetExpanded] = useState(true);
+    // Card owner / Bank transfer summary stay gated to superadmin and the
+    // Accounts POC specifically - an MIS POC gets unrestricted student data
+    // (see allPackages below) but not those two extra nav items.
     const fullAccess = role === 'superadmin' || !!seesAllStudents;
+
+  // Full package visibility (superadmin, Accounts POC, or an MIS POC) gets
+  // "All packages" plus every individual package tab to drill into. A scoped
+  // person only gets tabs for the package(s) actually assigned to them in
+  // Team access - and if that's just one package, there's nothing to switch
+  // between, so no tabs at all; their Actualisation Sheet is just quietly
+  // filtered to that one package.
+  const packageTabs = allPackages
+        ? ['All', ...PACKAGE_OPTIONS]
+        : (myPackages || []);
+  const showPackageTabs = packageTabs.length > 1;
 
   const items = NAV
         .filter((n) => !n.superadminOnly || role === 'superadmin')
         .filter((n) => !n.fullAccessOnly || fullAccess)
-        .map((item, i) =>
-        React.createElement('div', {
-                key: item.key,
-                className: 'nav-item ' + (active === item.key ? 'active' : ''),
-                title: item.label,
-                onClick: () => onChange(item.key),
-        },
-                                  React.createElement('span', { className: 'num' }, String(i + 1).padStart(2, '0')),
-                                  !collapsed && React.createElement('span', null, item.label),
-                                  item.key === 'sheet' && pendingCount > 0
-                                    ? React.createElement('span', { className: 'badge' }, pendingCount)
-                                    : null
-                               )
-                                                                                    );
+        .map((item, i) => {
+              const isSheet = item.key === 'sheet';
+              return React.createElement('div', { key: item.key },
+                    React.createElement('div', {
+                          className: 'nav-item ' + (active === item.key ? 'active' : ''),
+                          title: item.label,
+                          onClick: () => {
+                                onChange(item.key);
+                                if (isSheet && showPackageTabs) setSheetExpanded((v) => !v);
+                          },
+                    },
+                          React.createElement('span', { className: 'num' }, String(i + 1).padStart(2, '0')),
+                          !collapsed && React.createElement('span', { style: { flex: 1 } }, item.label),
+                          !collapsed && isSheet && pendingCount > 0
+                            ? React.createElement('span', { className: 'badge' }, pendingCount)
+                            : null,
+                          !collapsed && isSheet && showPackageTabs
+                            ? React.createElement('span', {
+                                    style: { fontSize: 11, opacity: 0.6, marginLeft: 6 },
+                              }, sheetExpanded ? String.fromCharCode(9662) : String.fromCharCode(9656))
+                            : null
+                    ),
+                    !collapsed && isSheet && showPackageTabs && sheetExpanded
+                      ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', margin: '4px 0 4px 26px', gap: 1 } },
+                              packageTabs.map((pkg) => React.createElement('div', {
+                                    key: pkg,
+                                    onClick: () => { onChange('sheet'); onPackageChange(pkg); },
+                                    style: {
+                                          padding: '6px 8px',
+                                          borderRadius: 6,
+                                          fontSize: '12.5px',
+                                          cursor: 'pointer',
+                                          background: activePackage === pkg ? 'rgba(255,255,255,0.12)' : 'transparent',
+                                          color: activePackage === pkg ? '#fff' : '#c7ccd6',
+                                    },
+                              }, pkg === 'All' ? 'All packages' : pkg))
+                            )
+                      : null
+              );
+        });
 
   return React.createElement('aside', { className: 'sidebar', style: collapsed ? { width: 64 } : undefined },
                                  React.createElement('div', {
