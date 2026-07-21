@@ -1,6 +1,6 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getProfile, requireMisWrite, getAccessScope, isAllowedCountry } from '@/utils/roles';
+import { getProfile, requireMisWrite, getAccessScope, isAllowedPackage } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 import { resolvePackageKey } from '@/lib/reference-services';
@@ -44,12 +44,12 @@ export async function GET(request) {
     const { data: misRowsRaw, error: misErr } = await misQuery;
     if (misErr) throw misErr;
 
-    // POC members are scoped to the countries assigned to them in Team access
+    // POC members are scoped to the packages assigned to them in Team access
     // (superadmin and the Accounts POC see everyone) - filtered here so every
     // downstream calculation (stats, totals) only reflects what they can see.
-    const misRows = scope.allCountries
+    const misRows = scope.allPackages
       ? misRowsRaw
-      : misRowsRaw.filter((r) => isAllowedCountry(scope, r.students?.country));
+      : misRowsRaw.filter((r) => isAllowedPackage(scope, r.students?.package));
 
     const studentIds = misRows.map((r) => r.students?.id).filter(Boolean);
     const misRecordIds = misRows.map((r) => r.id).filter(Boolean);
