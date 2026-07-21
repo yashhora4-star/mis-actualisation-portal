@@ -44,22 +44,26 @@ export function requireMisWrite(profile) {
   }
 }
 
+// Access is scoped by package, not country - a student's `package` field
+// (Italy, Germany, Ausbildung, L1E2E, etc) is what's actually populated on
+// every real record, whereas `country` has never been filled in, so scoping
+// by country left every restricted member unable to see anyone at all.
 export async function getAccessScope(supabase, profile) {
-  if (!profile) return { allCountries: false, countries: [] };
+  if (!profile) return { allPackages: false, packages: [] };
   // MIS POCs can already add/edit/delete students and record payments in any
-  // country - requireMisWrite has no country check - so restricting what they
-  // could *see* by country left them unable to find their own newly-added
-  // students unless a superadmin separately whitelisted that exact country.
+  // package - requireMisWrite has no package check - so restricting what they
+  // could *see* by package left them unable to find their own newly-added
+  // students unless a superadmin separately whitelisted that exact package.
   // Read access now matches the write access they already have.
   if (profile.role === 'superadmin' || profile.sees_all_students || profile.is_mis_poc) {
-    return { allCountries: true, countries: [] };
+    return { allPackages: true, packages: [] };
   }
-  const { data } = await supabase.from('user_country_access').select('country').eq('user_id', profile.id);
-  return { allCountries: false, countries: (data || []).map((r) => r.country) };
+  const { data } = await supabase.from('user_package_access').select('package').eq('user_id', profile.id);
+  return { allPackages: false, packages: (data || []).map((r) => r.package) };
 }
 
-export function isAllowedCountry(scope, country) {
+export function isAllowedPackage(scope, pkg) {
   if (!scope) return false;
-  if (scope.allCountries) return true;
-  return !!country && scope.countries.includes(country);
+  if (scope.allPackages) return true;
+  return !!pkg && scope.packages.includes(pkg);
 }
