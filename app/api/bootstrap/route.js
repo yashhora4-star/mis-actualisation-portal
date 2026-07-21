@@ -1,5 +1,5 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
-import { getProfile } from '@/utils/roles';
+import { getProfile, getAccessScope } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -31,6 +31,10 @@ export async function GET() {
           const supabase = await getSupabaseServer();
           const user = await requireUser(supabase);
           const profile = await getProfile(supabase, user.id);
+          // Which packages this person is scoped to drives the sidebar's
+          // Actualisation Sheet tabs - full access sees "All" plus every
+          // package, a scoped POC/service-team member sees only their own.
+          const scope = await getAccessScope(supabase, profile);
 
       const [{ count: studentCount }, { data: months }] = await Promise.all([
               supabase.from('students').select('id', { count: 'exact', head: true }),
@@ -71,6 +75,7 @@ export async function GET() {
 
       return ok({
               profile,
+              accessScope: scope,
               studentCount: studentCount || 0,
               months: distinctMonths,
               pendingActualisation: {
