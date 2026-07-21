@@ -162,12 +162,14 @@ export async function GET(request) {
       const key = (r.students?.id) + '|' + r.month;
       const svc = svcByStudentMonth[key];
       const actualisedCost = svc?.total ?? 0;
-      const netAfterCharges = (Number(r.collected) || 0) - (Number(r.subvention) || 0) - (Number(r.gst) || 0);
-      // Margin is against what actually landed net of subvention/GST, not the
-      // gross sale amount - the full sale amount was never all in hand, so
-      // measuring margin against it overstated how much room there really was.
-      const actualisedMarginPct = netAfterCharges
-        ? ((netAfterCharges - actualisedCost) / netAfterCharges) * 100
+      // "Net amount after deduction" (the uploaded/entered figure, after
+      // bank/gateway deduction) is the single net-amount source of truth -
+      // there used to be a second, separately-computed "net after
+      // subvention/GST" number living alongside it, which was confusing and
+      // redundant. Margin is now measured against this one figure instead.
+      const netAmount = r.net_amount_after_deduction != null ? Number(r.net_amount_after_deduction) : null;
+      const actualisedMarginPct = netAmount
+        ? ((netAmount - actualisedCost) / netAmount) * 100
         : null;
       const pkgInfo = refByPkg[r.reference_package_key] || { count: 0, total: 0 };
       const servicingBalance = pkgInfo.total - actualisedCost;
@@ -180,7 +182,6 @@ export async function GET(request) {
         servicing_total: pkgInfo.total,
         servicing_balance: servicingBalance,
         status: pkgInfo.count > 0 ? (isClosed ? 'Closed' : 'In progress') : '-',
-        net_after_charges: netAfterCharges,
         last_collection_date: lastPayByMis[r.id] || null,
         card_owners: cardByStudent[r.students?.id] || {},
       });
