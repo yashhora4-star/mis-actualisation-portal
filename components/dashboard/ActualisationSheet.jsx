@@ -180,7 +180,6 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
         'Outstanding': r.outstanding ?? '',
         'Outstanding Picked Date': r.outstanding_updated_at ? new Date(r.outstanding_updated_at).toLocaleDateString('en-IN') : '',
         'Net Amount After Deduction': r.net_amount_after_deduction ?? '',
-        'Net After Subvention/GST': r.net_after_charges ?? '',
         'Actualised Cost': r.actualised_cost ?? '',
         'Servicing Balance': r.servicing_balance ?? '',
         'Status': r.status || '',
@@ -228,7 +227,7 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const totalSale = filteredRows.reduce((s, r) => s + (Number(r.total_sale_amount) || 0), 0);
   const totalCollected = filteredRows.reduce((s, r) => s + (Number(r.collected) || 0), 0);
   const totalActualised = filteredRows.reduce((s, r) => s + (Number(r.actualised_cost) || 0), 0);
-  const totalNetAfterCharges = filteredRows.reduce((s, r) => s + (Number(r.net_after_charges) || 0), 0);
+  const totalNetAfterDeduction = filteredRows.reduce((s, r) => s + (Number(r.net_amount_after_deduction) || 0), 0);
 
   const selected = filteredRows.find((r) => r.id === selectedId) || null;
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
@@ -251,8 +250,8 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
           <div className="value">Rs {inr(totalCollected)}</div>
         </div>
         <div className="stat">
-          <div className="label">Net after subvention/GST</div>
-          <div className="value">Rs {inr(totalNetAfterCharges)}</div>
+          <div className="label">Net amount after deduction</div>
+          <div className="value">Rs {inr(totalNetAfterDeduction)}</div>
         </div>
         <div className="stat">
           <div className="label">Actualised cost so far</div>
@@ -260,9 +259,9 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
         </div>
         <div className="stat">
           <div className="label">Blended margin</div>
-          {/* Margin against what actually landed net of subvention/GST, not the gross
+          {/* Margin against the net amount after deduction, not the gross
               sale amount - matches the per-student Margin % fix below. */}
-          <div className="value">{totalNetAfterCharges ? pct(((totalNetAfterCharges - totalActualised) / totalNetAfterCharges) * 100) : '-'}</div>
+          <div className="value">{totalNetAfterDeduction ? pct(((totalNetAfterDeduction - totalActualised) / totalNetAfterDeduction) * 100) : '-'}</div>
         </div>
       </div>
 
@@ -406,7 +405,6 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
                   <Field label="Outstanding">Rs {inr(selected.outstanding)}</Field>
                   <Field label="Outstanding picked on">{fmtDate(selected.outstanding_updated_at)}</Field>
                   <Field label="Net amount after deduction">{selected.net_amount_after_deduction != null ? `Rs ${inr(selected.net_amount_after_deduction)}` : '-'}</Field>
-                  <Field label="Net after subvention/GST">Rs {inr(selected.net_after_charges)}</Field>
                   <Field label="Servicing balance">Rs {inr(selected.servicing_balance)}</Field>
                   <Field label="Margin %">{pct(selected.actualised_margin_pct)}</Field>
                   <Field label="Status"><span className={`tag ${selected.status === 'Closed' ? 'ac' : ''}`}>{selected.status}</span></Field>
