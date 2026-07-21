@@ -1,10 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { api } from '@/services/api';
+import { PACKAGE_OPTIONS } from '@/lib/reference-services';
 
-// Actual package values used across the MIS sheet tabs (April-July 2026),
-// not a guess - pulled from the real "Package" column values on file.
-const PACKAGE_OPTIONS = ['L1E2E', 'Italy', 'Germany', 'MBBS', 'VAS', 'Ausbildung', 'OEC', 'IVY'];
 const COUNTRY_OPTIONS = ['Italy', 'Germany', 'UK', 'Other'];
 
 export default function AddStudentModal({ onClose, onAdded, student }) {

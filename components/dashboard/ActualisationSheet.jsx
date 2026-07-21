@@ -104,7 +104,7 @@ function RecordPaymentModal({ row, onClose, onSaved }) {
 // detail panel on the right for whichever student is selected - replacing
 // the old dense, expandable multi-column table which got unwieldy once
 // there were more than a handful of fields per student.
-export default function ActualisationSheet({ month, role, canWrite, canTickServices = true }) {
+export default function ActualisationSheet({ month, role, canWrite, canTickServices = true, activePackage = 'All' }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -116,8 +116,6 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   const [payingRow, setPayingRow] = useState(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
-  const [countryFilter, setCountryFilter] = useState('');
-  const [packageFilter, setPackageFilter] = useState('');
   const [pocFilter, setPocFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [team, setTeam] = useState([]);
@@ -149,10 +147,10 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
     api('/api/team').then((res) => setTeam(res.team || [])).catch(() => {});
   }, []);
   // Whenever the visible set of students changes shape - a new search term,
-  // a different month, or any of the filters below - jump back to page 1.
-  // Otherwise a filter that narrows the list down could leave you stranded
-  // on a page number that no longer exists.
-  useEffect(() => { setPage(1); }, [q, month, countryFilter, packageFilter, pocFilter, statusFilter]);
+  // a different month, the sidebar's package tab, or a filter below - jump
+  // back to page 1. Otherwise a filter that narrows the list down could leave
+  // you stranded on a page number that no longer exists.
+  useEffect(() => { setPage(1); }, [q, month, activePackage, pocFilter, statusFilter]);
 
   async function deleteRow(r) {
     if (!window.confirm(`Delete ${r.students?.student_name} - ${r.month}? This removes their MIS record, P&L record, and ticked services for this month.`)) return;
@@ -202,20 +200,15 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
   if (err) return <div className="error-text">{err}</div>;
 
   const needle = q.trim().toLowerCase();
-  // Options for the Country/Package dropdowns are derived from the full,
-  // unfiltered row set (not filteredRows) so picking one filter doesn't
-  // shrink the choices available in the others.
-  const countryOptions = [...new Set(rows.map((r) => r.students?.country).filter(Boolean))].sort();
-  const packageOptions = [...new Set(rows.map((r) => r.students?.package).filter(Boolean))].sort();
   const selectedPoc = team.find((u) => u.id === pocFilter) || null;
-  // A POC filter means "students in a country this person is scoped to" -
+  // A POC filter means "students in a package this person is scoped to" -
   // the same scoping Team access uses for what they can see/act on live.
   // The Accounts POC / superadmin are scoped to everyone, so picking one of
   // them here is a no-op rather than an error.
-  function pocCoversCountry(poc, country) {
+  function pocCoversPackage(poc, pkg) {
     if (!poc) return true;
     if (poc.sees_all_students) return true;
-    return !!country && poc.countries.includes(country);
+    return !!pkg && poc.packages.includes(pkg);
   }
   const filteredRows = rows.filter((r) => {
     if (needle) {
@@ -224,10 +217,11 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
         (r.students?.student_name || '').toLowerCase().includes(needle);
       if (!hit) return false;
     }
-    if (countryFilter && r.students?.country !== countryFilter) return false;
-    if (packageFilter && r.students?.package !== packageFilter) return false;
+    // The package tab lives on the sidebar now, not a dropdown in this bar -
+    // "All" (or no value at all, for a full-access user) means no narrowing.
+    if (activePackage && activePackage !== 'All' && r.students?.package !== activePackage) return false;
     if (statusFilter && r.status !== statusFilter) return false;
-    if (selectedPoc && !pocCoversCountry(selectedPoc, r.students?.country)) return false;
+    if (selectedPoc && !pocCoversPackage(selectedPoc, r.students?.package)) return false;
     return true;
   });
 
@@ -274,22 +268,6 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
 
       <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
         <select
-          value={countryFilter}
-          onChange={(e) => setCountryFilter(e.target.value)}
-          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
-        >
-          <option value="">All countries</option>
-          {countryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={packageFilter}
-          onChange={(e) => setPackageFilter(e.target.value)}
-          style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
-        >
-          <option value="">All packages</option>
-          {packageOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select
           value={pocFilter}
           onChange={(e) => setPocFilter(e.target.value)}
           style={{ padding: '6px 10px', border: '1px solid var(--border-2)', borderRadius: 6, fontSize: 13 }}
@@ -307,10 +285,10 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
           <option value="Closed">Closed</option>
           <option value="-">--</option>
         </select>
-        {(countryFilter || packageFilter || pocFilter || statusFilter) && (
+        {(pocFilter || statusFilter) && (
           <button
             className="btn"
-            onClick={() => { setCountryFilter(''); setPackageFilter(''); setPocFilter(''); setStatusFilter(''); }}
+            onClick={() => { setPocFilter(''); setStatusFilter(''); }}
           >
             Clear filters
           </button>

@@ -1,10 +1,7 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '@/services/api';
-
-// Same country list used on the Add Student modal - kept in sync manually
-// since POC scoping is keyed off the exact same `country` values.
-const COUNTRY_OPTIONS = ['Italy', 'Germany', 'UK', 'Other'];
+import { PACKAGE_OPTIONS } from '@/lib/reference-services';
 
 export default function TeamPanel() {
     const [users, setUsers] = useState([]);
@@ -16,7 +13,7 @@ export default function TeamPanel() {
     const [inviting, setInviting] = useState(false);
     // Which user's access editor is expanded
     const [editingId, setEditingId] = useState(null);
-    const [draft, setDraft] = useState({ sees_all_students: false, is_mis_poc: false, countries: [] });
+    const [draft, setDraft] = useState({ sees_all_students: false, is_mis_poc: false, packages: [] });
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
     const [settingPwId, setSettingPwId] = useState(null);
@@ -96,15 +93,15 @@ export default function TeamPanel() {
 
   function openAccessEditor(u) {
         setEditingId(u.id);
-        setDraft({ sees_all_students: !!u.sees_all_students, is_mis_poc: !!u.is_mis_poc, countries: u.countries || [] });
+        setDraft({ sees_all_students: !!u.sees_all_students, is_mis_poc: !!u.is_mis_poc, packages: u.packages || [] });
   }
 
-  function toggleDraftCountry(country) {
+  function toggleDraftPackage(pkg) {
         setDraft((d) => ({
                 ...d,
-                countries: d.countries.includes(country)
-                  ? d.countries.filter((c) => c !== country)
-                  : [...d.countries, country],
+                packages: d.packages.includes(pkg)
+                  ? d.packages.filter((p) => p !== pkg)
+                  : [...d.packages, pkg],
         }));
   }
 
@@ -118,9 +115,9 @@ export default function TeamPanel() {
                                 id: u.id,
                                 sees_all_students: draft.sees_all_students,
                                 is_mis_poc: draft.is_mis_poc,
-                                // If they're the Accounts POC, country scoping is moot - clear it
+                                // If they're the Accounts POC, package scoping is moot - clear it
                                 // so the intent stays unambiguous in the DB.
-                                countries: draft.sees_all_students ? [] : draft.countries,
+                                packages: draft.sees_all_students ? [] : draft.packages,
                         },
                 });
                 setEditingId(null);
@@ -135,8 +132,8 @@ export default function TeamPanel() {
   function accessSummary(u) {
         if (u.role === 'superadmin') return 'All students (superadmin)';
         const scope = u.sees_all_students ? 'All students (Accounts POC)'
-          : (u.countries && u.countries.length) ? u.countries.join(', ')
-          : 'No country assigned yet';
+          : (u.packages && u.packages.length) ? u.packages.join(', ')
+          : 'No package assigned yet';
         return u.is_mis_poc ? `${scope} - MIS POC` : scope;
   }
 
@@ -149,7 +146,7 @@ export default function TeamPanel() {
                                 person) - no email is sent, so they can sign in immediately. New members always join
                                 as <code> member</code> - they can view everything and tick services, but can't
                                 upload sheets or add students, and can't change a tick once it's locked. After
-                                creating, assign them a country (or make them the Accounts POC) below so they only
+                                creating, assign them a package (or make them the Accounts POC) below so they only
                                 see the students relevant to them.
                       </p>
                       <div style={{ display: 'flex', gap: 10 }}>
@@ -209,7 +206,7 @@ export default function TeamPanel() {
                                       checked={draft.sees_all_students}
                                       onChange={(e) => setDraft((d) => ({ ...d, sees_all_students: e.target.checked }))}
                                     />
-                                    Accounts POC - sees and can act on every student, in every country
+                                    Accounts POC - sees and can act on every student, in every package
                                   </label>
                                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                                     <input
@@ -222,17 +219,17 @@ export default function TeamPanel() {
                                   {!draft.sees_all_students && (
                                     <div>
                                       <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>
-                                        Or scope this person to specific countries - they'll only see and tick services for students in these countries, and nothing else on the portal.
+                                        Or scope this person to specific packages - they'll only see and tick services for students in these packages, and nothing else on the portal.
                                       </div>
                                       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                                        {COUNTRY_OPTIONS.map((c) => (
-                                          <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                        {PACKAGE_OPTIONS.map((p) => (
+                                          <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                                             <input
                                               type="checkbox"
-                                              checked={draft.countries.includes(c)}
-                                              onChange={() => toggleDraftCountry(c)}
+                                              checked={draft.packages.includes(p)}
+                                              onChange={() => toggleDraftPackage(p)}
                                             />
-                                            {c}
+                                            {p}
                                           </label>
                                         ))}
                                       </div>
