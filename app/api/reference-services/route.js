@@ -1,7 +1,7 @@
 import { getSupabaseServer, requireUser } from '@/lib/supabase/server';
 import { ok, handle } from '@/utils/http';
 
-// GET ?package_key=AC_ITALY
+// GET ?package_key=Italy
 export async function GET(request) {
     try {
           const supabase = await getSupabaseServer();
