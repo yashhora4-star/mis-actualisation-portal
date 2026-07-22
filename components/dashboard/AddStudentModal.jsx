@@ -3,15 +3,12 @@ import { useState } from 'react';
 import { api } from '@/services/api';
 import { PACKAGE_OPTIONS } from '@/lib/reference-services';
 
-const COUNTRY_OPTIONS = ['Italy', 'Germany', 'UK', 'Other'];
-
 export default function AddStudentModal({ onClose, onAdded, student }) {
   const isEdit = !!student;
   const [form, setForm] = useState({
     stp_code: student?.stp_code || '',
     student_name: student?.student_name || '',
     email: student?.email || '',
-    country: student?.country || '',
     package: student?.package || '',
     month: student?.month || 'July 2026',
     total_sale_amount: student?.total_sale_amount ?? '',
@@ -54,7 +51,6 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             mis_record_id: student.mis_record_id,
             student_name: form.student_name,
             email: form.email,
-            country: form.country,
             package: form.package,
             total_sale_amount: form.total_sale_amount ? Number(form.total_sale_amount) : null,
             collected: form.collected ? Number(form.collected) : null,
@@ -98,13 +94,6 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
           <div className="field">
             <label>Email</label>
             <input value={form.email} onChange={(e) => set('email', e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Country</label>
-            <select className="cat-select" style={{ width: '100%' }} value={form.country} onChange={(e) => set('country', e.target.value)}>
-              <option value="">Select...</option>
-              {COUNTRY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
           </div>
           <div className="field">
             <label>Package</label>
