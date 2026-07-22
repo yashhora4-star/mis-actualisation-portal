@@ -277,7 +277,7 @@ export async function PATCH(request) {
 
     const { data: existing, error: fetchErr } = await admin
       .from('mis_records')
-      .select('id, student_id, month')
+      .select('id, student_id, month, total_sale_amount, reference_package_key')
       .eq('id', misRecordId)
       .single();
     if (fetchErr) throw fetchErr;
@@ -297,7 +297,19 @@ export async function PATCH(request) {
     if (body.collected !== undefined) misPatch.collected = body.collected;
     if (body.outstanding !== undefined) misPatch.outstanding = body.outstanding;
     if (body.net_amount_after_deduction !== undefined) misPatch.net_amount_after_deduction = body.net_amount_after_deduction;
-    if (body.reference_package_key !== undefined) misPatch.reference_package_key = body.reference_package_key;
+    if (body.reference_package_key !== undefined) {
+      // Caller explicitly picked a catalog - trust it as-is.
+      misPatch.reference_package_key = body.reference_package_key;
+    } else if (body.package !== undefined) {
+      // Package was changed via Edit but nobody told us which catalog to use -
+      // recompute it the same way an upload would, instead of leaving the
+      // checklist pinned to whatever package was resolved at upload/creation
+      // time. This is exactly the bug that let a student's Package say "VAS"
+      // while their checklist kept showing Germany/E2E services from before
+      // the correction.
+      const saleForMatch = body.total_sale_amount !== undefined ? body.total_sale_amount : existing.total_sale_amount;
+      misPatch.reference_package_key = resolvePackageKey(body.package, saleForMatch);
+    }
     let updatedMis = null;
     if (Object.keys(misPatch).length) {
       const { data, error } = await admin.from('mis_records').update(misPatch).eq('id', misRecordId).select().single();
