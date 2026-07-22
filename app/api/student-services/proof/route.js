@@ -7,9 +7,10 @@ import { logActivity } from '@/lib/activity';
 const BUCKET = 'service-proofs';
 const CARD_OWNERS = ['Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)'];
 
-// POST multipart/form-data { student_service_id, utr, file, payment_mode, card_owner?, actual_cost_inr? }
-// UTR, a proof file, and a payment mode are all mandatory - this is the one place
-// a tick's payment gets recorded, so we don't allow a half-finished submission.
+// POST multipart/form-data { student_service_id, utr, file?, payment_mode, card_owner?, actual_cost_inr? }
+// UTR and payment mode are mandatory - this is the one place a tick's payment
+// gets recorded. The proof file itself is optional: it can be added now or
+// on a later "Update" once it's actually on hand, without blocking the tick.
 export async function POST(request) {
   try {
     const supabase = await getSupabaseServer();
@@ -28,9 +29,6 @@ export async function POST(request) {
 
     if (!studentServiceId) return handle({ message: 'student_service_id is required', status: 400 });
     if (!utr) return handle({ message: 'UTR is required', status: 400 });
-    if (!file || typeof file !== 'object' || typeof file.arrayBuffer !== 'function' || file.size === 0) {
-      return handle({ message: 'Proof of payment is required', status: 400 });
-    }
     if (paymentMode !== 'card' && paymentMode !== 'bank_transfer') {
       return handle({ message: 'Select a payment mode', status: 400 });
     }
@@ -40,25 +38,31 @@ export async function POST(request) {
 
     const admin = getSupabaseAdmin();
 
-    const safeName = String(file.name || 'proof').replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const path = `${studentServiceId}/${Date.now()}-${safeName}`;
-    const arrayBuffer = await file.arrayBuffer();
-    const { error: upErr } = await admin.storage.from(BUCKET).upload(path, arrayBuffer, {
-      contentType: file.type || 'application/octet-stream',
-      upsert: true,
-    });
-    if (upErr) throw upErr;
-    const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+    const hasFile = file && typeof file === 'object' && typeof file.arrayBuffer === 'function' && file.size > 0;
 
     const patch = {
       utr,
-      proof_file_url: pub.publicUrl,
-      proof_file_name: file.name || safeName,
-      proof_uploaded_at: new Date().toISOString(),
       payment_mode: paymentMode,
       card_owner: paymentMode === 'card' ? cardOwner : null,
     };
     if (actualCost != null && Number.isFinite(actualCost)) patch.actual_cost_inr = actualCost;
+
+    // File is optional - only touch the proof_* columns (and only overwrite an
+    // existing proof) when one was actually sent this time.
+    if (hasFile) {
+      const safeName = String(file.name || 'proof').replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const path = `${studentServiceId}/${Date.now()}-${safeName}`;
+      const arrayBuffer = await file.arrayBuffer();
+      const { error: upErr } = await admin.storage.from(BUCKET).upload(path, arrayBuffer, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
+      patch.proof_file_url = pub.publicUrl;
+      patch.proof_file_name = file.name || safeName;
+      patch.proof_uploaded_at = new Date().toISOString();
+    }
 
     const { data: saved, error } = await admin
       .from('student_services')
@@ -75,7 +79,7 @@ export async function POST(request) {
       performedBy: user.id,
       details: {
         utr,
-        file_name: patch.proof_file_name,
+        file_name: patch.proof_file_name ?? null,
         payment_mode: paymentMode,
         card_owner: patch.card_owner,
         actual_cost_inr: patch.actual_cost_inr ?? null,
