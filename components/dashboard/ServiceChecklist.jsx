@@ -311,7 +311,11 @@ function ProofModal({ target, onClose, onCancelTick, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const canSave = utr.trim() && file && paymentMode && (paymentMode !== 'card' || cardOwner);
+  // Proof of payment is no longer mandatory to save payment details - UTR and
+  // payment mode (and card, if paid by card) are still required, since those
+  // are what actually identify the transaction; the file can be added later
+  // via Update if it isn't on hand yet.
+  const canSave = utr.trim() && paymentMode && (paymentMode !== 'card' || cardOwner);
 
   async function save() {
     setBusy(true);
@@ -320,7 +324,7 @@ function ProofModal({ target, onClose, onCancelTick, onSaved }) {
       const form = new FormData();
       form.append('student_service_id', target.id);
       form.append('utr', utr.trim());
-      form.append('file', file);
+      if (file) form.append('file', file);
       form.append('payment_mode', paymentMode);
       if (paymentMode === 'card') form.append('card_owner', cardOwner);
       if (actualCost !== '') form.append('actual_cost_inr', actualCost);
@@ -350,7 +354,7 @@ function ProofModal({ target, onClose, onCancelTick, onSaved }) {
       <div style={{ width: 420, background: 'var(--surface)', borderRadius: 8, padding: 20 }}>
         <div className="card-title">Payment details - {target.service_name}</div>
         <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: -8, marginBottom: 12 }}>
-          UTR, payment mode, and proof of payment are all required before this service counts as done. Cancel reverses the tick if the details aren't on hand yet.
+          UTR and payment mode are required before this service counts as done - proof of payment can be added now or later. Cancel reverses the tick if the details aren't on hand yet.
         </p>
         {err && <div className="error-text" style={{ marginBottom: 8 }}>{err}</div>}
 
@@ -397,7 +401,7 @@ function ProofModal({ target, onClose, onCancelTick, onSaved }) {
           </>
         )}
 
-        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Proof of payment *</label>
+        <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Proof of payment (optional)</label>
         <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} style={{ marginBottom: 16 }} />
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
