@@ -4,7 +4,14 @@ import { api } from '@/services/api';
 import { inr } from '@/lib/format';
 import ActivityDrawer from '@/components/dashboard/ActivityDrawer';
 
-const CARD_OWNERS = ['Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)'];
+// "Personal card" plus the three named individuals cover payments fronted on
+// someone's own card rather than a company card - those still need to be
+// raised for disbursement/reimbursement, but that's tracked by which name
+// gets picked here, not a separate payment mode.
+const CARD_OWNERS = [
+  'Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)',
+  'Aditya Arora', 'Personal card', 'Sumit Arora', 'Bharti',
+];
 
 export default function ServiceChecklist({ studentId, month, role, onChanged, canTick = true }) {
   const [checklist, setChecklist] = useState([]);
