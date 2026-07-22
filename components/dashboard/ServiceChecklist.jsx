@@ -41,9 +41,12 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
     const refId = item.reference_service_id;
     setSavingId(refId);
     const today = new Date().toISOString().slice(0, 10);
-    // Optimistic update - no full reload, no spinner flash.
+    // Optimistic update - no full reload, no spinner flash. Leave `locked` as
+    // whatever it already was rather than forcing it true - ticking no longer
+    // auto-locks the row (see skip_lock below), so the real server value will
+    // almost always just be `false` for anything ticked from here on.
     setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
-      ? { ...c, is_selected: checked, service_date: checked ? (c.service_date || today) : c.service_date, locked: true }
+      ? { ...c, is_selected: checked, service_date: checked ? (c.service_date || today) : c.service_date }
       : c));
     try {
       const res = await api('/api/student-services', {
@@ -54,6 +57,12 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
           reference_service_id: refId,
           is_selected: checked,
           service_date: today,
+          // Ticking/unticking no longer locks the row - members can freely
+          // retick, untick, or (via changeDate below) correct the date
+          // afterward. Locking is still available (an already-locked legacy
+          // row still requires a superadmin's Unlock), it just isn't applied
+          // automatically anymore on every tick.
+          skip_lock: true,
         },
       });
       setChecklist((prev) => prev.map((c) => c.reference_service_id === refId
@@ -136,6 +145,9 @@ export default function ServiceChecklist({ studentId, month, role, onChanged, ca
           reference_service_id: item.reference_service_id,
           is_selected: item.is_selected,
           service_date: dateStr,
+          // Correcting the date shouldn't lock the row either - same reasoning
+          // as toggle() above.
+          skip_lock: true,
         },
       });
     } catch (e) {
