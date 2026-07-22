@@ -17,9 +17,13 @@ export async function GET(request) {
     const user = await requireUser(supabase);
     const profile = await getProfile(supabase, user.id);
     const scope = await getAccessScope(supabase, profile);
-    // Card owner summary is a full-portfolio view - country-scoped POCs don't
-    // get it (per "nothing else on the portal"), even if they hit the API directly.
-    if (!scope.allCountries) {
+    // Card owner summary is a full-portfolio view - package-scoped POCs don't
+    // get it (per "nothing else on the portal"), even if they hit the API
+    // directly. (getAccessScope only ever returns allPackages/packages -
+    // access is scoped by package, not country - so this used to check a
+    // field, allCountries, that never existed and was always undefined,
+    // locking out everyone including superadmin.)
+    if (!scope.allPackages) {
       return handle({ message: 'Not authorized for this view', status: 403 });
     }
 
