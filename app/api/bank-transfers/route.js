@@ -11,7 +11,11 @@ export async function GET(request) {
     const user = await requireUser(supabase);
     const profile = await getProfile(supabase, user.id);
     const scope = await getAccessScope(supabase, profile);
-    if (!scope.allCountries) {
+    // (getAccessScope only ever returns allPackages/packages - access is
+    // scoped by package, not country - so this used to check a field,
+    // allCountries, that never existed and was always undefined, locking
+    // out everyone including superadmin.)
+    if (!scope.allPackages) {
       return handle({ message: 'Not authorized for this view', status: 403 });
     }
 
