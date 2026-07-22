@@ -5,7 +5,15 @@ import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
 
 const BUCKET = 'service-proofs';
-const CARD_OWNERS = ['Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)'];
+// "Personal card" plus the three named individuals cover payments fronted on
+// someone's own card rather than a company card - kept in this same list
+// (not a separate payment mode) since the UI's Card dropdown is the one
+// place this gets picked. Must stay in sync with the same list in
+// components/dashboard/ServiceChecklist.jsx.
+const CARD_OWNERS = [
+  'Tanisha Kalra (HSBC)', 'Manish Singh (HSBC)', 'Manish Singh (RBL)',
+  'Aditya Arora', 'Personal card', 'Sumit Arora', 'Bharti',
+];
 
 // POST multipart/form-data { student_service_id, utr, file?, payment_mode, card_owner?, actual_cost_inr? }
 // UTR and payment mode are mandatory - this is the one place a tick's payment
