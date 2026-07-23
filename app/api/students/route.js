@@ -26,6 +26,32 @@ async function fetchInChunks(makeQuery, column, ids, chunkSize = IN_CHUNK_SIZE) 
   return results.flat();
 }
 
+// Supabase/PostgREST silently caps a query at 1000 rows unless it's paged
+// with .range() - with no page limit ever set here, the "All months" view
+// (no `month` filter, the default for superadmin/MIS-POC dashboards) was
+// quietly dropping every mis_record past the 1000th, ordered by month desc.
+// A package-scoped POC viewing a single month stayed under that cap and so
+// never noticed anything missing - which is exactly what made a record
+// "appear for POC Adnan but not for MIS POC or superadmin": the unfiltered
+// view had already truncated it away before scope filtering ever ran.
+// `.order('id')` is added as a tiebreaker after `.order('month')` so paging
+// through ranges is stable and complete instead of risking skipped/duplicated
+// rows on ties.
+const PAGE_SIZE = 1000;
+async function fetchAllPages(makeQuery) {
+  const all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await makeQuery().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    all.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return all;
+}
+
 export async function GET(request) {
   try {
     const supabase = await getSupabaseServer();
@@ -35,14 +61,15 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
 
-    let misQuery = supabase
-      .from('mis_records')
-      .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, outstanding_updated_at, net_amount_after_deduction, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, email, country, package, created_at )')
-      .order('month', { ascending: false });
-    if (month) misQuery = misQuery.eq('month', month);
-
-    const { data: misRowsRaw, error: misErr } = await misQuery;
-    if (misErr) throw misErr;
+    const misRowsRaw = await fetchAllPages(() => {
+      let q = supabase
+        .from('mis_records')
+        .select('id, month, product_tag, reference_package_key, total_sale_amount, collected, outstanding, outstanding_updated_at, net_amount_after_deduction, total_amount_received, subvention, gst, total_margin_incl_gst, total_margin_excl_gst, total_margin_excl_subvention_gst, students ( id, stp_code, student_name, email, country, package, created_at )')
+        .order('month', { ascending: false })
+        .order('id', { ascending: true });
+      if (month) q = q.eq('month', month);
+      return q;
+    });
 
     // POC members are scoped to the packages assigned to them in Team access
     // (superadmin and the Accounts POC see everyone) - filtered here so every
