@@ -6,6 +6,12 @@ import { inr } from '@/lib/format';
 // Every bank-transfer payment recorded against a service tick: student,
 // date, UTR, and a link to the uploaded proof - so this can be reconciled
 // against bank statements without digging into each student's row.
+// Same fix as the student list: with no cap, this table just kept growing
+// with every bank-transfer tick ever recorded (in the 90s and counting),
+// turning the page into one long endless scroll. Pagination keeps each page
+// short regardless of how many rows exist in total.
+const PAGE_SIZE = 15;
+
 export default function BankTransferSummary() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -13,6 +19,7 @@ export default function BankTransferSummary() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [page, setPage] = useState(1);
 
   async function load() {
     setLoading(true);
@@ -23,6 +30,7 @@ export default function BankTransferSummary() {
       const res = await api(`/api/bank-transfers${params.toString() ? `?${params.toString()}` : ''}`);
       setRows(res.rows || []);
       setTotal(res.total || 0);
+      setPage(1);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -31,6 +39,10 @@ export default function BankTransferSummary() {
   }
 
   useEffect(() => { load(); }, []);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="card">
@@ -62,7 +74,7 @@ export default function BankTransferSummary() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {pagedRows.map((r) => (
               <tr key={r.id}>
                 <td>{r.stp_code}</td>
                 <td>{r.student_name}</td>
@@ -86,13 +98,20 @@ export default function BankTransferSummary() {
           {rows.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={7} style={{ fontWeight: 600 }}>Total</td>
+                <td colSpan={7} style={{ fontWeight: 600 }}>Total ({rows.length} transactions)</td>
                 <td className="num-cell" style={{ fontWeight: 600 }}>Rs {inr(total)}</td>
                 <td></td>
               </tr>
             </tfoot>
           )}
         </table>
+      )}
+      {!loading && rows.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+          <button className="btn" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1}>Prev</button>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Page {safePage} of {totalPages}</span>
+          <button className="btn" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages}>Next</button>
+        </div>
       )}
     </div>
   );

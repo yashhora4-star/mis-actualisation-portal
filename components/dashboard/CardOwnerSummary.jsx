@@ -7,6 +7,11 @@ import { inr } from '@/lib/format';
 // on HSBC, Manish Singh on HSBC, Manish Singh on RBL, etc) within a chosen
 // date range - now built straight from student_services ticks paid by card,
 // so each total can be expanded into exactly which students it came from.
+// Same fix as the student list and bank transfer summary: an expanded card
+// owner's transaction list had no cap, so a heavily-used card (120+
+// transactions) turned expanding it into one long endless scroll.
+const PAGE_SIZE = 15;
+
 export default function CardOwnerSummary() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -14,6 +19,12 @@ export default function CardOwnerSummary() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [detailPage, setDetailPage] = useState(1);
+
+  function toggleExpanded(owner) {
+    setExpanded((cur) => (cur === owner ? null : owner));
+    setDetailPage(1);
+  }
 
   async function load() {
     setLoading(true);
@@ -59,48 +70,63 @@ export default function CardOwnerSummary() {
             </tr>
           </thead>
           <tbody>
-            {summary.map((row) => (
-              <Fragment key={row.card_owner}>
-                <tr style={{ cursor: 'pointer' }} onClick={() => setExpanded(expanded === row.card_owner ? null : row.card_owner)}>
-                  <td style={{ width: 20, color: 'var(--muted)' }}>{expanded === row.card_owner ? 'â¾' : 'â¸'}</td>
-                  <td>{row.card_owner}</td>
-                  <td className="num-cell">{row.count}</td>
-                  <td className="num-cell">Rs {inr(row.total)}</td>
-                </tr>
-                {expanded === row.card_owner && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 0 }}>
-                      <table style={{ width: '100%' }}>
-                        <thead>
-                          <tr>
-                            <th>STP code</th>
-                            <th>Student</th>
-                            <th>Country</th>
-                            <th>Month</th>
-                            <th>Service</th>
-                            <th>Date</th>
-                            <th className="num-cell">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {row.students.map((s, i) => (
-                            <tr key={`${s.student_id}-${i}`}>
-                              <td>{s.stp_code}</td>
-                              <td>{s.student_name}</td>
-                              <td>{s.country}</td>
-                              <td>{s.month}</td>
-                              <td>{s.service_name}</td>
-                              <td>{s.service_date || '-'}</td>
-                              <td className="num-cell">Rs {inr(s.amount)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </td>
+            {summary.map((row) => {
+              const isExpanded = expanded === row.card_owner;
+              const detailTotalPages = Math.max(1, Math.ceil(row.students.length / PAGE_SIZE));
+              const safeDetailPage = Math.min(detailPage, detailTotalPages);
+              const pagedStudents = isExpanded
+                ? row.students.slice((safeDetailPage - 1) * PAGE_SIZE, safeDetailPage * PAGE_SIZE)
+                : [];
+              return (
+                <Fragment key={row.card_owner}>
+                  <tr style={{ cursor: 'pointer' }} onClick={() => toggleExpanded(row.card_owner)}>
+                    <td style={{ width: 20, color: 'var(--muted)' }}>{isExpanded ? 'â¾' : 'â¸'}</td>
+                    <td>{row.card_owner}</td>
+                    <td className="num-cell">{row.count}</td>
+                    <td className="num-cell">Rs {inr(row.total)}</td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={4} style={{ padding: 0 }}>
+                        <table style={{ width: '100%' }}>
+                          <thead>
+                            <tr>
+                              <th>STP code</th>
+                              <th>Student</th>
+                              <th>Country</th>
+                              <th>Month</th>
+                              <th>Service</th>
+                              <th>Date</th>
+                              <th className="num-cell">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedStudents.map((s, i) => (
+                              <tr key={`${s.student_id}-${i}`}>
+                                <td>{s.stp_code}</td>
+                                <td>{s.student_name}</td>
+                                <td>{s.country}</td>
+                                <td>{s.month}</td>
+                                <td>{s.service_name}</td>
+                                <td>{s.service_date || '-'}</td>
+                                <td className="num-cell">Rs {inr(s.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {row.students.length > PAGE_SIZE && (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+                            <button className="btn" onClick={() => setDetailPage((p) => Math.max(1, p - 1))} disabled={safeDetailPage <= 1}>Prev</button>
+                            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Page {safeDetailPage} of {detailTotalPages} ({row.students.length} transactions)</span>
+                            <button className="btn" onClick={() => setDetailPage((p) => Math.min(detailTotalPages, p + 1))} disabled={safeDetailPage >= detailTotalPages}>Next</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {!summary.length && (
               <tr><td colSpan={4} className="empty-state">No card payments in this range.</td></tr>
             )}
