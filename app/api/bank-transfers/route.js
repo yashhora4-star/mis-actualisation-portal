@@ -25,7 +25,7 @@ export async function GET(request) {
 
     let query = supabase
       .from('student_services')
-      .select('id, student_id, month, service_date, actual_cost_inr, utr, proof_file_url, proof_file_name, reference_service_id, students(student_name, stp_code, country), reference_services(service_name)')
+      .select('id, student_id, month, service_date, actual_cost_inr, reference_cost_inr, utr, proof_file_url, proof_file_name, reference_service_id, students(student_name, stp_code, country), reference_services(service_name)')
       .eq('payment_mode', 'bank_transfer');
     if (from) query = query.gte('service_date', from);
     if (to) query = query.lte('service_date', to);
@@ -40,7 +40,11 @@ export async function GET(request) {
       country: row.students?.country || '-',
       month: row.month,
       service_name: row.reference_services?.service_name || '-',
-      amount: Number(row.actual_cost_inr || 0),
+      // Same fallback as /api/students and card-owners: actual_cost_inr is
+      // only an optional override, the real cost usually lives in
+      // reference_cost_inr (catalog fixed price or a per-student entered
+      // value) - summing only actual_cost_inr silently showed these as ₹0.
+      amount: Number(row.actual_cost_inr ?? row.reference_cost_inr ?? 0),
       service_date: row.service_date,
       utr: row.utr,
       proof_file_url: row.proof_file_url,
