@@ -74,7 +74,7 @@ export async function GET(request) {
     if (studentIds.length) {
       svcRows = await fetchInChunks(
         () => {
-          let q = supabase.from('student_services').select('student_id, month, is_selected, reference_cost_inr, actual_cost_inr, service_date');
+          let q = supabase.from('student_services').select('student_id, month, is_selected, reference_cost_inr, actual_cost_inr, service_date, reference_service_id');
           if (month) q = q.eq('month', month);
           return q;
         },
@@ -83,10 +83,46 @@ export async function GET(request) {
       );
     }
 
+    // Map student+month -> the package key currently in effect for that MIS
+    // record, so stale ticks can be filtered out below.
+    const pkgKeyByStudentMonth = {};
+    for (const r of misRows) {
+      if (!r.students?.id) continue;
+      pkgKeyByStudentMonth[r.students.id + '|' + r.month] = r.reference_package_key;
+    }
+
+    // Which package each ticked service actually belongs to - needed to spot
+    // ticks left over from a package this student had before a correction
+    // (same bug class as the reference_package_key fix in PATCH above). Pull
+    // every cost_type, not just "fixed", since a stale tick can be any type.
+    const refServiceIds = [...new Set((svcRows || []).map((s) => s.reference_service_id).filter(Boolean))];
+    let refSvcByIdRows = [];
+    if (refServiceIds.length) {
+      refSvcByIdRows = await fetchInChunks(
+        () => supabase.from('reference_services').select('id, package_key'),
+        'id',
+        refServiceIds
+      );
+    }
+    const pkgKeyByRefServiceId = {};
+    for (const s of refSvcByIdRows || []) pkgKeyByRefServiceId[s.id] = s.package_key;
+
     const svcByStudentMonth = {};
     for (const s of svcRows || []) {
       if (!s.is_selected) continue;
       const key = s.student_id + '|' + s.month;
+      // Skip ticks whose service no longer belongs to this student's current
+      // package - orphaned leftovers from before a package correction (e.g. a
+      // VAS student with a stray tick still pointing at an E2E service).
+      // These already don't show on the live checklist (which is scoped
+      // correctly); they shouldn't count toward actualised cost, servicing
+      // balance, margin, or the Closed/In-progress status either. If either
+      // side of the comparison is unknown (missing reference_service_id, or a
+      // reference_services row that's since been deleted), fall back to
+      // counting it rather than silently dropping real data.
+      const currentPkg = pkgKeyByStudentMonth[key];
+      const svcPkg = s.reference_service_id ? pkgKeyByRefServiceId[s.reference_service_id] : undefined;
+      if (currentPkg && svcPkg && svcPkg !== currentPkg) continue;
       if (!svcByStudentMonth[key]) svcByStudentMonth[key] = { total: 0, lastDate: null, tickedCount: 0 };
       svcByStudentMonth[key].total += Number(s.actual_cost_inr ?? s.reference_cost_inr ?? 0);
       svcByStudentMonth[key].tickedCount += 1;
