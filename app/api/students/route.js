@@ -78,7 +78,16 @@ export async function GET(request) {
       ? misRowsRaw
       : misRowsRaw.filter((r) => isAllowedPackage(scope, r.students?.package));
 
-    const studentIds = misRows.map((r) => r.students?.id).filter(Boolean);
+    // A student with more than one month's mis_record (very common - the same
+    // admission reappears every actualisation cycle) would otherwise show up
+    // more than once in this list. fetchInChunks batches ids into groups of
+    // 150 and runs a separate `.in()` query per batch - if the same student
+    // id landed in two different batches, EVERY one of that student's
+    // student_services/pnl_records/card_transactions rows got fetched (and
+    // summed) once per batch, silently doubling (or worse) their actualised
+    // cost, margin, and servicing balance. Deduping here is what actually
+    // fixes that, independent of the reference_package_key filtering above.
+    const studentIds = [...new Set(misRows.map((r) => r.students?.id).filter(Boolean))];
     const misRecordIds = misRows.map((r) => r.id).filter(Boolean);
 
     let pnlRows = [];
