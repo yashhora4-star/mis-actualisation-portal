@@ -33,7 +33,7 @@ export async function GET(request) {
 
     let query = supabase
       .from('student_services')
-      .select('id, student_id, month, service_date, actual_cost_inr, card_owner, utr, reference_service_id, students(student_name, stp_code, country), reference_services(service_name)')
+      .select('id, student_id, month, service_date, actual_cost_inr, reference_cost_inr, card_owner, utr, reference_service_id, students(student_name, stp_code, country), reference_services(service_name)')
       .eq('payment_mode', 'card')
       .not('card_owner', 'is', null);
     if (from) query = query.gte('service_date', from);
@@ -45,7 +45,14 @@ export async function GET(request) {
     for (const row of data || []) {
       const owner = row.card_owner || 'Unknown';
       if (!totals[owner]) totals[owner] = { card_owner: owner, total: 0, count: 0, students: [] };
-      const amount = Number(row.actual_cost_inr || 0);
+      // Same fallback /api/students uses for actualised_cost: actual_cost_inr
+      // is only an optional override (set when the true amount differed from
+      // what was already recorded) - for most ticks the real cost lives in
+      // reference_cost_inr (either the catalog's fixed price, or a per-student
+      // value someone typed in for an editable service like Accommodation).
+      // Summing only actual_cost_inr silently showed these as ₹0 here even
+      // though they're tied to a real card owner and UTR.
+      const amount = Number(row.actual_cost_inr ?? row.reference_cost_inr ?? 0);
       totals[owner].total += amount;
       totals[owner].count += 1;
       totals[owner].students.push({
