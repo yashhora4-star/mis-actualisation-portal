@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getProfile, requireMisWrite, getAccessScope, isAllowedPackage } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
-import { resolvePackageKey } from '@/lib/reference-services';
+import { resolvePackageKey, usesServiceAllocation } from '@/lib/reference-services';
 
 // Postgres/PostgREST rejects a single request once an `.in(column, ids)`
 // list gets long enough - as the dataset grew past a few thousand
@@ -180,16 +180,41 @@ export async function GET(request) {
     let refSvcRows = [];
     if (packageKeys.length) {
       refSvcRows = await fetchInChunks(
-        () => supabase.from('reference_services').select('package_key, reference_cost_inr').eq('cost_type', 'fixed'),
+        () => supabase.from('reference_services').select('id, package_key, reference_cost_inr').eq('cost_type', 'fixed'),
         'package_key',
         packageKeys
       );
     }
     const refByPkg = {};
+    const refRowById = {};
     for (const s of refSvcRows || []) {
       if (!refByPkg[s.package_key]) refByPkg[s.package_key] = { count: 0, total: 0 };
       refByPkg[s.package_key].count += 1;
       refByPkg[s.package_key].total += Number(s.reference_cost_inr || 0);
+      refRowById[s.id] = s;
+    }
+
+    // Per-student service allocation (non-VAS packages only) - which of the
+    // package's catalog services this particular student actually gets, set
+    // via the Add/Edit student picker. When a student has one, Servicing
+    // Total/Balance/Closed are computed from only those services instead of
+    // the full package catalog - a coach skipping a service for a given
+    // student shouldn't keep inflating their balance forever. No allocation
+    // rows at all means nobody's set one yet, so it falls back to the full
+    // catalog exactly as before.
+    let allocRows = [];
+    if (studentIds.length) {
+      allocRows = await fetchInChunks(
+        () => supabase.from('student_service_allocations').select('student_id, reference_service_id'),
+        'student_id',
+        studentIds
+      );
+    }
+    const allocByStudent = {};
+    for (const a of allocRows || []) {
+      if (!a.student_id) continue;
+      if (!allocByStudent[a.student_id]) allocByStudent[a.student_id] = new Set();
+      allocByStudent[a.student_id].add(a.reference_service_id);
     }
 
     // Last date any collection landed against this MIS record - pulled from
@@ -243,7 +268,22 @@ export async function GET(request) {
       const actualisedMarginPct = netAmount
         ? ((netAmount - actualisedCost) / netAmount) * 100
         : null;
-      const pkgInfo = refByPkg[r.reference_package_key] || { count: 0, total: 0 };
+      const pkgKey = r.reference_package_key;
+      const catalogPkgInfo = refByPkg[pkgKey] || { count: 0, total: 0 };
+      const allocSet = allocByStudent[r.students?.id];
+      let pkgInfo = catalogPkgInfo;
+      if (usesServiceAllocation(pkgKey) && allocSet && allocSet.size > 0) {
+        let total = 0;
+        let count = 0;
+        for (const id of allocSet) {
+          const row = refRowById[id];
+          if (row && row.package_key === pkgKey) {
+            total += Number(row.reference_cost_inr || 0);
+            count += 1;
+          }
+        }
+        pkgInfo = { total, count };
+      }
       const servicingBalance = pkgInfo.total - actualisedCost;
       const isClosed = pkgInfo.count > 0 && (svc?.tickedCount || 0) >= pkgInfo.count;
       return Object.assign({}, r, {
