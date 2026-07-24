@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getProfile, getAccessScope, isAllowedPackage } from '@/utils/roles';
 import { ok, handle } from '@/utils/http';
 import { logActivity } from '@/lib/activity';
+import { usesServiceAllocation } from '@/lib/reference-services';
 
 // GET ?student_id=...&month=... -> full checklist for that student/month,
 // merging the reference_services catalog with whatever's already ticked.
@@ -41,6 +42,28 @@ export async function GET(request) {
         .order('sort_order');
       if (error) throw error;
       refServices = data;
+    }
+
+    // Only for allocation-enabled packages (Germany, Italy, every E2E tier,
+    // France, OEC, Ausbildung): if this student has an explicit service
+    // allocation set (via the Add/Edit student picker - which of the
+    // package's catalog services this particular student actually gets),
+    // the checklist only shows those. Falls back to showing every catalog
+    // service (today's behavior) until someone sets an allocation for this
+    // student, so nothing changes for existing students until the MIS team
+    // actively picks services for them. VAS, MBBS, and IVY are excluded -
+    // VAS because accommodation/application fee vary per booking, MBBS/IVY
+    // because every catalog service is expected to apply to every student.
+    if (packageKey && usesServiceAllocation(packageKey)) {
+      const { data: allocRows, error: allocErr } = await supabase
+        .from('student_service_allocations')
+        .select('reference_service_id')
+        .eq('student_id', studentId);
+      if (allocErr) throw allocErr;
+      if (allocRows && allocRows.length) {
+        const allocatedIds = new Set(allocRows.map((a) => a.reference_service_id));
+        refServices = refServices.filter((s) => allocatedIds.has(s.id));
+      }
     }
 
     const { data: ticks, error: tickErr } = await supabase
