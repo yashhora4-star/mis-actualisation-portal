@@ -381,6 +381,7 @@ export default function ActualisationSheet({ month, role, canWrite, canTickServi
                         <button className="btn primary" onClick={() => setPayingRow(selected)}>Record payment</button>
                         <button className="btn" onClick={() => setEditRow({
                           mis_record_id: selected.id,
+                          student_id: selected.students?.id,
                           stp_code: selected.students?.stp_code,
                           student_name: selected.students?.student_name,
                           email: selected.students?.email,

@@ -1,7 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/services/api';
-import { PACKAGE_OPTIONS } from '@/lib/reference-services';
+import { PACKAGE_OPTIONS, resolvePackageKey, usesServiceAllocation } from '@/lib/reference-services';
 
 export default function AddStudentModal({ onClose, onAdded, student }) {
   const isEdit = !!student;
@@ -18,6 +18,60 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  // Which of the resolved package's catalog services this particular
+  // student actually gets - separate from whether they've been given/paid
+  // yet. Not applicable to VAS (accommodation/application fee vary per
+  // booking, nothing to pre-select).
+  const [availableServices, setAvailableServices] = useState([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState(() => new Set());
+  const [allocLoaded, setAllocLoaded] = useState(false);
+  const packageKey = resolvePackageKey(form.package, Number(form.total_sale_amount) || undefined);
+  const showAllocationPicker = usesServiceAllocation(packageKey);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCatalog() {
+      if (!showAllocationPicker) {
+        setAvailableServices([]);
+        return;
+      }
+      try {
+        const res = await api(`/api/reference-services?package_key=${encodeURIComponent(packageKey)}`);
+        if (!cancelled) setAvailableServices(res.services || []);
+      } catch (e) {
+        if (!cancelled) setAvailableServices([]);
+      }
+    }
+    loadCatalog();
+    return () => { cancelled = true; };
+  }, [packageKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadExistingAllocation() {
+      if (!isEdit || !student?.student_id || allocLoaded) return;
+      try {
+        const res = await api(`/api/student-service-allocations?student_id=${student.student_id}`);
+        if (!cancelled) {
+          setSelectedServiceIds(new Set(res.reference_service_ids || []));
+          setAllocLoaded(true);
+        }
+      } catch (e) {
+        if (!cancelled) setAllocLoaded(true);
+      }
+    }
+    loadExistingAllocation();
+    return () => { cancelled = true; };
+  }, [isEdit, student?.student_id, allocLoaded]);
+
+  function toggleService(id) {
+    setSelectedServiceIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   function set(field, value) { setForm((f) => ({ ...f, [field]: value })); }
 
@@ -44,6 +98,7 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
     setBusy(true);
     setErr('');
     try {
+      let studentId = student?.student_id;
       if (isEdit) {
         await api('/api/students', {
           method: 'PATCH',
@@ -59,7 +114,7 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
           },
         });
       } else {
-        await api('/api/students', {
+        const res = await api('/api/students', {
           method: 'POST',
           body: {
             ...form,
@@ -69,7 +124,19 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             net_amount_after_deduction: form.net_amount_after_deduction ? Number(form.net_amount_after_deduction) : null,
           },
         });
+        studentId = res.student_id;
       }
+
+      // Save which catalog services this student actually gets - only when
+      // a real (non-VAS) package resolved, so nothing's saved for VAS or for
+      // an unresolved package.
+      if (studentId && showAllocationPicker) {
+        await api('/api/student-service-allocations', {
+          method: 'POST',
+          body: { student_id: studentId, reference_service_ids: [...selectedServiceIds] },
+        });
+      }
+
       onAdded && onAdded();
     } catch (e) {
       setErr(e.message);
@@ -118,6 +185,46 @@ export default function AddStudentModal({ onClose, onAdded, student }) {
             />
           </div>
         </div>
+
+        {showAllocationPicker && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: 'var(--muted)' }}>Select the services this student will get</label>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{selectedServiceIds.size} of {availableServices.length} selected</span>
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 6, maxHeight: 220, overflowY: 'auto' }}>
+              {availableServices.map((svc, i) => (
+                <label
+                  key={svc.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 12px', fontSize: 13,
+                    borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedServiceIds.has(svc.id)}
+                      onChange={() => toggleService(svc.id)}
+                    />
+                    {svc.service_name}
+                  </span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: svc.reference_cost_inr == null ? 'var(--muted)' : 'inherit' }}>
+                    {svc.reference_cost_inr == null ? 'Enter cost' : `Rs ${svc.reference_cost_inr.toLocaleString('en-IN')}`}
+                  </span>
+                </label>
+              ))}
+              {!availableServices.length && (
+                <div style={{ padding: 12, fontSize: 12, color: 'var(--muted)' }}>Loading services for this package...</div>
+              )}
+            </div>
+            <p style={{ fontSize: 11, color: 'var(--muted)', margin: '6px 0 0' }}>
+              Nothing is pre-selected - check only the services that apply to this student. Anything already marked given stays selected automatically.
+            </p>
+          </div>
+        )}
+
         {err && <div className="error-text">{err}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
           <button className="btn" onClick={onClose}>Cancel</button>
